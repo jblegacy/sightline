@@ -1,0 +1,962 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sightline — Review Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#16202B; --ground:#E9EDF1; --panel:#FBFCFD; --panel2:#F2F5F7;
+  --rule:#C0CAD3; --rule-soft:#D9E0E6; --muted:#5C6A77;
+  --auto:#1F6B5C; --auto-soft:#D5E4E0;
+  --gate:#B26A00; --gate-soft:#F2E3C8;
+  --done:#2C5578; --stop:#8C3A2E;
+  --display:'Archivo',system-ui,sans-serif;
+  --body:'IBM Plex Sans',system-ui,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--body);font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
+.label{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--muted)}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+button{font-family:var(--body);cursor:pointer}
+a{color:var(--done)}
+:focus-visible{outline:2px solid var(--gate);outline-offset:2px}
+
+/* ---- sample banner ---- */
+.demo{background:var(--gate);color:#fff;padding:7px 22px;font-family:var(--mono);font-size:11px;letter-spacing:.06em}
+
+/* ---- top bar ---- */
+header{background:var(--panel);border-bottom:1px solid var(--rule);padding:14px 22px 0}
+.brandrow{display:flex;align-items:baseline;gap:16px;flex-wrap:wrap;margin-bottom:14px}
+.brand{font-family:var(--display);font-weight:800;font-size:1.18rem;letter-spacing:-.02em}
+.runinfo{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.dot{display:inline-block;width:7px;height:7px;background:var(--auto);border-radius:50%;margin-right:6px}
+nav{display:flex;gap:2px;flex-wrap:wrap}
+nav button{background:none;border:0;border-bottom:2px solid transparent;padding:9px 14px;font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+nav button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--gate)}
+nav button .ct{background:var(--rule-soft);color:var(--ink);border-radius:9px;padding:1px 6px;margin-left:7px;font-size:10px}
+main{padding:22px}
+.view{display:none}
+.view.on{display:block}
+h2{font-family:var(--display);font-weight:600;font-size:1.1rem;margin:0 0 3px;letter-spacing:-.01em}
+.hint{color:var(--muted);font-size:12.5px;margin:0 0 16px}
+
+/* ---- rows ---- */
+.row{background:var(--panel);border:1px solid var(--rule);border-top-width:0;padding:12px 14px;display:grid;grid-template-columns:74px 1fr auto;gap:14px;align-items:start}
+.row:first-of-type{border-top-width:1px}
+.row.open{background:var(--panel2)}
+.rowmain{min-width:0}
+.rtitle{font-weight:600;font-size:14.5px;margin:0 0 2px}
+.rmeta{font-family:var(--mono);font-size:11px;color:var(--muted);display:flex;gap:12px;flex-wrap:wrap;margin-bottom:5px}
+.rrat{font-size:13px;color:var(--muted);margin:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.row.open .rrat{-webkit-line-clamp:unset;overflow:visible}
+.tag{font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;padding:2px 6px;border:1px solid var(--rule)}
+.tag.eng{color:var(--auto);border-color:var(--auto-soft);background:var(--auto-soft)}
+.tag.lead{color:var(--gate);border-color:var(--gate-soft);background:var(--gate-soft)}
+
+/* score badge = signature element */
+.badge{text-align:center}
+.badge .n{font-family:var(--mono);font-size:26px;font-weight:600;line-height:1;letter-spacing:-.03em}
+.badge.hi .n{color:var(--auto)}
+.badge.mid .n{color:var(--gate)}
+.dims{display:flex;gap:2px;margin-top:5px;height:20px;align-items:flex-end;justify-content:center}
+.dims i{width:7px;background:var(--rule-soft);display:block;position:relative}
+.dims i b{position:absolute;bottom:0;left:0;right:0;background:var(--auto);display:block}
+.dims i.neg b{background:var(--stop)}
+.dimkey{font-family:var(--mono);font-size:9px;color:var(--muted);margin-top:3px;letter-spacing:.06em}
+
+/* expanded panel */
+.detail{grid-column:1/-1;margin-top:12px;padding-top:12px;border-top:1px solid var(--rule-soft);display:none;gap:20px;grid-template-columns:1.4fr 1fr}
+.row.open .detail{display:grid}
+.detail h4{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);margin:0 0 6px}
+.detail section{margin-bottom:15px}
+.chips{display:flex;flex-wrap:wrap;gap:5px}
+.chip{font-family:var(--mono);font-size:11px;background:var(--panel);border:1px solid var(--rule);padding:2px 7px}
+.chip.gap{border-left:3px solid var(--gate)}
+ul.tight{margin:0;padding-left:17px}
+ul.tight li{font-size:13px;margin-bottom:3px}
+.dimtable{width:100%;border-collapse:collapse;font-size:12px}
+.dimtable td{padding:3px 0;border-bottom:1px solid var(--rule-soft)}
+.dimtable td:first-child{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.dimtable td:last-child{text-align:right;font-family:var(--mono);font-weight:600}
+.acts{display:flex;gap:7px;flex-wrap:wrap;margin-top:6px}
+.btn{border:1px solid var(--rule);background:var(--panel);padding:6px 12px;font-size:12.5px;font-weight:500}
+.btn:hover{border-color:var(--ink)}
+.btn.go{background:var(--gate);border-color:var(--gate);color:#fff}
+.btn.go:hover{filter:brightness(1.08)}
+.btn.sm{padding:4px 9px;font-size:11.5px}
+.btn.ghost{background:none;color:var(--muted)}
+
+/* tables */
+table.grid{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--rule)}
+table.grid th{text-align:left;font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);padding:9px 11px;border-bottom:1px solid var(--rule)}
+table.grid td{padding:10px 11px;border-bottom:1px solid var(--rule-soft);vertical-align:top;font-size:13px}
+table.grid tr:last-child td{border-bottom:0}
+select,input[type=text]{font-family:var(--body);font-size:12.5px;padding:4px 7px;border:1px solid var(--rule);background:var(--panel);color:var(--ink);width:100%;min-width:0;max-width:100%}
+.pill{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;padding:2px 7px;border:1px solid}
+.pill.unsent{color:var(--muted);border-color:var(--rule)}
+.pill.submitted{color:var(--done);border-color:var(--done);background:#E4ECF3}
+.pill.screen,.pill.interview{color:var(--auto);border-color:var(--auto);background:var(--auto-soft)}
+.pill.rejected,.pill.ghosted{color:var(--stop);border-color:var(--stop);background:#F2E2DE}
+.due{font-family:var(--mono);font-size:11.5px}
+.due.now{color:var(--gate);font-weight:600}
+
+/* outreach */
+.oc{background:var(--panel);border:1px solid var(--rule);padding:16px;margin-bottom:14px}
+.ochead{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;align-items:baseline;padding-bottom:11px;margin-bottom:13px;border-bottom:1px solid var(--rule-soft)}
+.ocgrid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.kv{font-size:13px;margin-bottom:9px}
+.kv .label{display:block;margin-bottom:2px}
+.sig{border-left:3px solid var(--auto);padding-left:9px;font-size:12.5px;color:var(--muted);margin-bottom:6px}
+.target{background:var(--panel2);border:1px solid var(--rule-soft);padding:11px;margin-top:11px}
+.target .f{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:9px;min-width:0}
+.target .f input{min-width:0}
+.drafts{margin-top:13px;display:none}
+.drafts.on{display:block}
+.draft{border:1px solid var(--rule);margin-bottom:9px}
+.dhead{display:flex;justify-content:space-between;align-items:center;gap:10px;background:var(--panel2);padding:6px 10px;border-bottom:1px solid var(--rule)}
+.dbody{padding:10px;font-size:13px;white-space:pre-wrap}
+.dbody .subj{font-weight:600;margin-bottom:7px}
+.cc{font-family:var(--mono);font-size:10px;color:var(--muted)}
+
+/* metrics */
+.mgrid{display:grid;gap:2px;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));background:var(--rule);margin-bottom:20px}
+.mcell{background:var(--panel);padding:15px}
+.mcell .big{font-family:var(--mono);font-size:27px;font-weight:600;display:block;letter-spacing:-.025em;line-height:1.1}
+.mcell .sub{font-size:11.5px;color:var(--muted)}
+.funnel{background:var(--panel);border:1px solid var(--rule);padding:18px}
+.fst{display:grid;grid-template-columns:1fr 62px;gap:11px;align-items:center;padding:6px 0}
+.fst .nm{font-family:var(--mono);font-size:11px;letter-spacing:.07em;text-transform:uppercase;margin:0 0 5px}
+.fbar{height:13px;background:var(--auto)}
+.fst.h .fbar{background:var(--gate)}
+.fst .ct2{font-family:var(--mono);font-size:17px;font-weight:600;text-align:right}
+.fst.h .ct2{color:var(--gate)}
+.gatebar{margin:14px -18px;padding:11px 18px;background:var(--gate);color:#fff;font-family:var(--display);font-weight:800;font-size:.8rem;letter-spacing:.15em;text-transform:uppercase}
+.empty{background:var(--panel);border:1px dashed var(--rule);padding:26px;text-align:center;color:var(--muted);font-size:13px}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:9px 17px;font-family:var(--mono);font-size:11.5px;letter-spacing:.05em;opacity:0;pointer-events:none;transition:opacity .2s}
+.toast.on{opacity:1}
+
+/* ---- settings ---- */
+.seclabel{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:26px 0 12px;padding-bottom:8px;border-bottom:2px solid var(--ink)}
+.seclabel h3{font-family:var(--display);font-weight:800;font-size:.92rem;letter-spacing:.13em;text-transform:uppercase;margin:0}
+.seclabel .cost{font-family:var(--mono);font-size:10px;letter-spacing:.07em;padding:2px 8px;border:1px solid}
+.seclabel .cost.paid{color:var(--stop);border-color:var(--stop);background:#F4E4E0}
+.seclabel .cost.free{color:var(--auto);border-color:var(--auto);background:var(--auto-soft)}
+.seclabel p{margin:0;font-size:12px;color:var(--muted);flex:1;min-width:220px}
+.rangerow{display:grid;grid-template-columns:1fr 18px 1fr;gap:9px;align-items:center}
+.rangerow span{text-align:center;color:var(--muted);font-family:var(--mono);font-size:12px}
+.livecount{font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-top:10px}
+.livecount b{color:var(--ink)}
+.blur{filter:blur(4px);opacity:.55;user-select:none}
+table.samp{width:100%;border-collapse:collapse;table-layout:fixed;margin-top:12px;font-size:12.5px;background:var(--panel)}
+table.samp th{text-align:left;font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:.11em;text-transform:uppercase;color:var(--muted);padding:6px 9px;border-bottom:1px solid var(--rule)}
+table.samp td{padding:6px 9px;border-bottom:1px solid var(--rule-soft)}
+table.samp td.sal{font-family:var(--mono);font-size:11.5px}
+.sampnote{font-size:11.5px;color:var(--muted);margin-top:9px}
+.sampwrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (max-width:760px){table.samp{min-width:640px;table-layout:auto}}
+.tabs2{display:flex;gap:2px;margin-top:12px}
+.tabs2 button{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;padding:6px 12px;border:1px solid var(--rule);background:var(--panel2);color:var(--muted)}
+.tabs2 button[aria-selected=true]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.panel{background:var(--panel);border:1px solid var(--rule);padding:18px;margin-bottom:16px}
+.panel h3{font-family:var(--display);font-weight:600;font-size:1rem;margin:0 0 3px}
+.panel .ph{color:var(--muted);font-size:12.5px;margin:0 0 15px}
+.fld{margin-bottom:15px}
+.fld>label{display:block;font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.fld .note{font-size:11.5px;color:var(--muted);margin-top:4px}
+.taginput{border:1px solid var(--rule);background:var(--panel2);padding:6px;display:flex;flex-wrap:wrap;gap:5px;align-items:center;min-height:36px}
+.taginput input{border:0;background:none;flex:1;min-width:120px;padding:3px;font-size:12.5px;outline:none}
+.tg{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;background:var(--panel);border:1px solid var(--rule);padding:2px 4px 2px 7px}
+.tg.neg{border-color:var(--stop);color:var(--stop)}
+.tg button{border:0;background:none;color:var(--muted);font-size:13px;line-height:1;padding:0 2px}
+.tg button:hover{color:var(--stop)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.row3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.togline{display:flex;align-items:center;gap:9px;font-size:13px;margin-bottom:9px}
+.prev{background:var(--panel2);border:1px solid var(--rule);padding:14px;margin-top:6px}
+.prevnums{display:grid;grid-template-columns:repeat(3,1fr);gap:2px;background:var(--rule);margin-top:11px}
+.prevnums div{background:var(--panel);padding:11px}
+.prevnums .big{font-family:var(--mono);font-size:22px;font-weight:600;display:block;letter-spacing:-.02em}
+.prevnums .sub{font-size:11px;color:var(--muted)}
+.freecost{font-family:var(--mono);font-size:10px;color:var(--auto);border:1px solid var(--auto-soft);background:var(--auto-soft);padding:2px 7px;letter-spacing:.06em}
+.meter{height:12px;background:var(--rule-soft);margin:9px 0 5px;position:relative}
+.meter b{position:absolute;left:0;top:0;bottom:0;background:var(--auto);display:block}
+.meter b.warn{background:var(--gate)}
+.meter b.over{background:var(--stop)}
+.warnbox{border-left:3px solid var(--gate);background:var(--gate-soft);padding:10px 12px;font-size:12.5px;margin-top:11px}
+/* ---- comp + knockout badges ---- */
+.badges{display:flex;gap:5px;flex-wrap:wrap;align-items:center;margin-bottom:5px}
+.cb{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.06em;padding:2px 7px;border:1px solid}
+.cb.target{color:#1F6B5C;border-color:#1F6B5C;background:var(--auto-soft)}
+.cb.under{color:var(--gate);border-color:var(--gate);background:var(--gate-soft)}
+.cb.low{color:var(--stop);border-color:var(--stop);background:#F4E4E0}
+.cb.unknown{color:var(--muted);border-color:var(--rule);background:var(--panel2)}
+.ko{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.06em;padding:2px 7px;border:1px solid var(--stop);color:var(--stop);background:#F4E4E0}
+.clean{font-family:var(--mono);font-size:10px;padding:2px 7px;border:1px solid var(--auto-soft);color:var(--auto);background:var(--auto-soft)}
+.repeat{font-family:var(--mono);font-size:10px;padding:2px 7px;border:1px solid var(--done);color:var(--done);background:#E4ECF3}
+.kolist{margin:0;padding-left:16px}
+.kolist li{font-size:12.5px;margin-bottom:3px;color:var(--stop)}
+.chips-f{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.chips-f button{font-family:var(--mono);font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;padding:5px 11px;border:1px solid var(--rule);background:var(--panel);color:var(--muted)}
+.chips-f button[aria-pressed=true]{background:var(--ink);color:#fff;border-color:var(--ink)}
+/* ---- diff modal ---- */
+.mask{position:fixed;inset:0;background:rgba(22,32,43,.55);display:none;z-index:40;padding:24px;overflow:auto}
+.mask.on{display:block}
+.modal{background:var(--ground);max-width:1120px;margin:0 auto;border:1px solid var(--rule)}
+.mhead{background:var(--panel);border-bottom:1px solid var(--rule);padding:14px 18px;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;position:sticky;top:0}
+.mhead h3{font-family:var(--display);font-weight:600;font-size:1.02rem;margin:0}
+.mbody{padding:18px}
+.dcols{display:grid;grid-template-columns:1fr 1fr;gap:2px;background:var(--rule)}
+.dcol{background:var(--panel);padding:15px}
+.dcol h4{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;margin:0 0 4px;padding-bottom:9px;border-bottom:2px solid var(--rule)}
+.dcol.new h4{border-bottom-color:var(--gate);color:var(--gate)}
+.dsec{font-family:var(--mono);font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:var(--muted);margin:15px 0 7px;padding-bottom:4px;border-bottom:1px solid var(--rule-soft)}
+.db{font-size:12.5px;padding:7px 9px;margin-bottom:5px;border-left:3px solid var(--rule-soft);background:var(--panel2);position:relative}
+.db .ref{font-family:var(--mono);font-size:9.5px;color:var(--muted);letter-spacing:.06em;display:block;margin-bottom:2px}
+.db.kept{border-left-color:var(--auto)}
+.db.dropped{border-left-color:var(--rule);opacity:.42}
+.db.promoted{border-left-color:var(--gate);background:var(--gate-soft)}
+.db .why{font-family:var(--mono);font-size:9.5px;color:var(--gate);letter-spacing:.05em;margin-top:4px;display:block}
+.dlegend{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:14px}
+.dlegend span{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+.dlegend i{width:10px;height:10px;display:inline-block}
+.summarybox{background:var(--panel2);border-left:3px solid var(--gate);padding:9px 11px;font-size:12.5px;margin-bottom:6px}
+.notesin{width:100%;font-family:var(--body);font-size:12.5px;padding:5px 7px;border:1px solid var(--rule);background:var(--panel);min-height:30px}
+@media (max-width:760px){.dcols{grid-template-columns:1fr}.mask{padding:10px}}
+
+@media (max-width:560px){
+  .target .f{grid-template-columns:1fr}
+  .mgrid{grid-template-columns:1fr 1fr}
+}
+@media (max-width:820px){
+  .detail,.ocgrid{grid-template-columns:1fr}
+  .row{grid-template-columns:60px 1fr}
+  .row .rowacts{grid-column:2}
+  main{padding:14px}
+  table.grid{display:block;overflow-x:auto;white-space:nowrap}
+}
+</style>
+</head>
+<body>
+
+<div class="demo">PROTOTYPE — sample data. Numbers and postings are illustrative, not real pipeline output.</div>
+
+<header>
+  <div class="brandrow">
+    <span class="brand">Sightline</span>
+    <span class="runinfo"><span class="dot"></span>Last run 03:42 · 412 ingested · 96 filtered · 19 scored ≥70</span>
+  </div>
+  <nav role="tablist">
+    <button role="tab" aria-selected="true" data-v="queue">Queue <span class="ct" id="c-queue">0</span></button>
+    <button role="tab" aria-selected="false" data-v="apps">Applications <span class="ct" id="c-apps">0</span></button>
+    <button role="tab" aria-selected="false" data-v="out">Outreach <span class="ct" id="c-out">0</span></button>
+    <button role="tab" aria-selected="false" data-v="met">Metrics</button>
+    <button role="tab" aria-selected="false" data-v="set">Settings</button>
+  </nav>
+</header>
+
+<main>
+  <div class="view on" id="v-queue">
+    <h2>Review queue</h2>
+    <p class="hint">Everything worth a look. Comp and knockout flags are shown, not filtered out — you decide what's worth the time.</p>
+    <div class="chips-f" id="qfilters">
+      <button data-f="all" aria-pressed="true">All <span class="ct"></span></button>
+      <button data-f="clean" aria-pressed="false">Clean</button>
+      <button data-f="flagged" aria-pressed="false">Knockouts flagged</button>
+      <button data-f="target" aria-pressed="false">At target comp</button>
+      <button data-f="below" aria-pressed="false">Below floor</button>
+    </div>
+    <div id="queueRows"></div>
+  </div>
+
+  <div class="view" id="v-apps">
+    <h2>Applications</h2>
+    <p class="hint">What you sent, when, and which variant. Marking submitted sets a follow-up seven days out.</p>
+    <div id="appsWrap"></div>
+  </div>
+
+  <div class="view" id="v-out">
+    <h2>Outreach</h2>
+    <p class="hint">Extracted reporting lines and company signals for your LinkedIn research. Drafts generate once you name a target — you send from your own inbox.</p>
+    <div id="outWrap"></div>
+  </div>
+
+  <div class="view" id="v-set">
+    <h2>Criteria</h2>
+    <p class="hint">Two layers. What you fetch costs credits and is gone once spent. What you show is free — the data is already paid for.</p>
+
+    <div class="seclabel"><h3>Fetch criteria</h3><span class="cost paid">COSTS CREDITS</span>
+      <p>Narrows what comes back from TheirStack. Every job returned is a credit, kept or discarded.</p></div>
+
+    <div class="panel">
+      <h3>Job titles</h3>
+      <p class="ph">One query with an OR'd list, not several overlapping queries — a job matching two queries is charged twice.</p>
+      <div class="fld"><label>Include — matches any</label>
+        <div class="taginput" id="tiInc"><input type="text" placeholder="add a title and press Enter"></div>
+        <div class="note">Word-order independent. "automation engineer" matches "Engineer, Automation".</div></div>
+      <div class="fld"><label>Exclude</label>
+        <div class="taginput" id="tiExc"><input type="text" placeholder="add an exclusion"></div></div>
+    </div>
+
+    <div class="panel">
+      <h3>Salary</h3>
+      <p class="ph">Filtering salary at fetch time is the one setting that can silently cost you good roles.</p>
+      <div class="togline"><input type="checkbox" id="fSalOn"><label for="fSalOn">Apply a salary filter when fetching</label></div>
+      <div class="row2" id="fSalRow" style="opacity:.4;pointer-events:none">
+        <div class="fld"><label>Min salary (USD)</label><input type="text" id="fSalMin" value="90000"></div>
+        <div class="fld"><label>Max salary (USD)</label><input type="text" id="fSalMax" value=""></div>
+      </div>
+      <div class="warnbox"><b>Off by default, deliberately.</b> Most postings publish no salary band, and a fetch-time salary filter drops every one of them — including roles that would pay well. Filter salary in the queue layer below instead, where it's free and reversible.</div>
+    </div>
+
+    <div class="panel">
+      <h3>Scope</h3>
+      <div class="togline"><input type="checkbox" id="fRemote" checked><label for="fRemote">Remote only</label></div>
+      <div class="togline"><input type="checkbox" id="fOpen" checked><label for="fOpen">Exclude closed postings</label></div>
+      <div class="togline"><input type="checkbox" id="fDirect" checked><label for="fDirect">Direct employers only (excludes recruiting agencies)</label></div>
+      <div class="row3">
+        <div class="fld"><label>Countries</label><input type="text" id="fCountry" value="US"></div>
+        <div class="fld"><label>Min employees</label><input type="text" id="fEmp" value="50"><div class="note">Unknown sizes included</div></div>
+        <div class="fld"><label>Employment types</label><input type="text" id="fEmp2" value="full_time, contract"></div>
+      </div>
+      <div class="fld"><label>Seniority</label><input type="text" id="fSen" value="mid_level, senior, staff"><div class="note">Leave blank for all</div></div>
+      <div class="fld"><label>Exclude sources</label><input type="text" id="fSrc" placeholder="e.g. linkedin.com"></div>
+    </div>
+
+    <div class="panel">
+      <h3>Preview <span class="freecost">0 CREDITS</span></h3>
+      <p class="ph">Runs in blurred preview mode. Tune until daily volume matches your budget, then run live.</p>
+      <button class="btn go" id="doPrev">Run free preview</button>
+      <div class="prev" id="prevOut" style="display:none">
+        <div class="prevnums">
+          <div><span class="big" id="pDay">—</span><span class="sub">new per day</span></div>
+          <div><span class="big" id="pWeek">—</span><span class="sub">last 7 days</span></div>
+          <div><span class="big" id="pBack">—</span><span class="sub">full backlog (one-time)</span></div>
+        </div>
+        <div id="prevMsg" style="margin-top:11px;font-size:12.5px"></div>
+        <div class="tabs2">
+          <button data-pt="size" aria-selected="true">Is it the right size?</button>
+          <button data-pt="prec" aria-selected="false">Is it catching the right roles?</button>
+        </div>
+        <div id="prevSize"></div>
+        <div id="prevPrec" style="display:none"></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Credit budget</h3>
+      <div class="row2">
+        <div class="fld"><label>Monthly credits</label><input type="text" id="cMonth" value="1500"></div>
+        <div class="fld"><label>Hard cap per run</label><input type="text" id="cRun" value="120">
+          <div class="note">Safety valve — a bad query can't drain the month overnight</div></div>
+      </div>
+      <label class="label">Used this month</label>
+      <div class="meter"><b id="cMeter" style="width:31%"></b></div>
+      <div class="note">468 of 1,500 used · 47/day average · projected to last through Aug 22</div>
+      <div class="warnbox" style="margin-top:13px"><b>Backlog is separate.</b> Currently-open matching roles are a one-time cost. Size it with preview, then sweep in tranches — don't let the first live run discover it.</div>
+    </div>
+
+    <div class="seclabel"><h3>Queue filters</h3><span class="cost free">FREE</span>
+      <p>Controls what you see. The data is already fetched — nothing here costs anything, and nothing is lost.</p></div>
+
+    <div class="panel">
+      <h3>Show me</h3>
+      <div class="row2">
+        <div class="fld"><label>Salary range shown</label>
+          <div class="rangerow"><input type="text" id="qSalMin" value="0"><span>–</span><input type="text" id="qSalMax" value="500000"></div>
+          <div class="note">Applies to postings with a published band</div></div>
+        <div class="fld"><label>Minimum score</label><input type="text" id="qScore" value="55"></div>
+      </div>
+      <div class="row2">
+        <div class="fld"><label>Max age (days)</label><input type="text" id="qAge" value="21"></div>
+        <div class="fld"><label>Knockout tolerance</label>
+          <select id="qKo"><option value="9">Show everything</option><option value="2">Hide 3 or more knockouts</option><option value="1">Hide 2 or more</option><option value="0">Clean descriptions only</option></select></div>
+      </div>
+      <div class="togline"><input type="checkbox" id="qNoSal" checked><label for="qNoSal">Include postings with no published salary</label></div>
+      <div class="livecount" id="qCount"></div>
+      <button class="btn" id="qApply" style="margin-top:11px">Apply to queue</button>
+    </div>
+
+    <div class="panel">
+      <h3>Badges and scoring</h3>
+      <div class="row3">
+        <div class="fld"><label>Queue threshold</label><input type="text" id="sThresh" value="70"></div>
+        <div class="fld"><label>Comp target</label><input type="text" id="sTarget" value="150000"><div class="note">At or above → teal badge</div></div>
+        <div class="fld"><label>Well-below line</label><input type="text" id="sLow" value="90000"><div class="note">Below → red badge</div></div>
+      </div>
+      <div class="togline"><input type="checkbox" id="sHard" checked><label for="sHard">Flag hard requirements only — ignore "preferred"</label></div>
+      <div class="note">Flagging soft preferences flags everything, which destroys the signal.</div>
+      <div class="fld" style="margin-top:15px"><label>Rubric version</label><input type="text" value="v1 (uncalibrated)" disabled>
+        <div class="note">Editing weights forces a version bump so scores stay comparable. Calibrate against your 20 hand-scored postings first.</div></div>
+    </div>
+  </div>
+
+  <div class="view" id="v-met">
+    <h2>Metrics</h2>
+    <p class="hint">Last 7 days.</p>
+    <div class="mgrid">
+      <div class="mcell"><span class="big">19h</span><span class="sub">Median posting → submitted</span></div>
+      <div class="mcell"><span class="big">412</span><span class="sub">Ingested this week</span></div>
+      <div class="mcell"><span class="big">31</span><span class="sub">Surfaced to queue</span></div>
+      <div class="mcell"><span class="big">12</span><span class="sub">Submitted</span></div>
+      <div class="mcell"><span class="big">2</span><span class="sub">Replies</span></div>
+      <div class="mcell"><span class="big">$0.71</span><span class="sub">Scoring spend, 7 days</span></div>
+    </div>
+    <p class="hint">Six counters, one query each. Response-rate-by-variant comes later, once there's enough data to mean anything.</p>
+  </div>
+</main>
+
+<div class="mask" id="mask"><div class="modal">
+  <div class="mhead"><h3 id="mtitle">Tailoring changes</h3>
+    <div><button class="btn sm" id="mdl">Download .docx</button> <button class="btn sm ghost" id="mclose">Close</button></div></div>
+  <div class="mbody" id="mbody"></div>
+</div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const DIMS=[['Role fit',25],['Evidence overlap',20],['Seniority & scope',15],['Remote authenticity',15],['Comp signal',15],['Company & stage',10],['Red flags',-30]];
+
+// ---- baseline bullet library (excerpt) ----
+const LIB={
+ eng:{summary:{key:'eng-master',text:'Builds and ships AI automation systems end to end \u2014 specification through production. Twelve years of operations experience underneath the technical work. Seeking hands-on build work as an individual contributor rather than people management.'},
+  sections:[
+   {org:'BEAM LEGACY GROUP',b:[
+    {r:'BL-014',t:'Architected and shipped an autonomous forecasting and decision-automation platform running live in production \u2014 68 API endpoints, 540 configurable strategy profiles, ensemble modeling, and automated risk controls with real-time hedging.',g:['production','live system','api design','risk automation','systems architecture']},
+    {r:'BL-015',t:'Built the statistical validation layer that gates production deployment \u2014 no strategy reaches live execution without passing it.',g:['validation','testing','governance','production','risk']},
+    {r:'BL-016',t:'Specify, build, and deploy production-grade platforms as a single operator by directing AI coding agents.',g:['ai agents','autonomy','delivery','prototyping']},
+    {r:'BL-017',t:'Built an AI platform for small-business owners integrating search visibility, automated content production, and a business-intelligence layer unifying accounting, point-of-sale, and CRM data.',g:['integration','internal tools','bi','data','product']},
+    {r:'BL-018',t:'Audited that platform\u2019s scoring engine and remediated 12 defects across three priority tiers before customer release.',g:['qa','validation','debugging','quality']},
+    {r:'BL-019',t:'Built data pipelines processing hundreds of thousands of records: batch classification via LLM APIs, vector embedding, dimensionality reduction, and nearest-neighbor computation.',g:['data pipelines','etl','llm','embeddings','scale']},
+    {r:'BL-020',t:'Reduced inference cost on production workloads through prompt-cache optimization and batch API usage rather than per-request calls.',g:['cost','optimization','llm','efficiency','adoption metrics']}]},
+   {org:'COMARKCO',b:[
+    {r:'BL-021',t:'Standardized and automated recurring finance, logistics, and reporting workflows, cutting manual processing time across multi-country operations.',g:['workflow automation','process automation','efficiency','operations','time saved']},
+    {r:'BL-022',t:'Designed and implemented the operational, financial, and compliance systems supporting revenue growth from $250K to $12M in a single year.',g:['systems','scale','operations','impact']},
+    {r:'BL-023',t:'Integrated finance, e-commerce, and logistics platforms into a single reporting layer, eliminating manual reconciliation between systems.',g:['integration','api','internal tools','data','systems']},
+    {r:'BL-024',t:'Built the reporting and data infrastructure used for inventory planning, cash forecasting, and multi-entity consolidation.',g:['data','bi','forecasting','reporting']}]},
+   {org:'WORKSITE LABS',b:[
+    {r:'BL-025',t:'Product Owner for the digital patient booking platform \u2014 wrote requirements, designed the UX, ran sprint planning through delivery.',g:['product','requirements','delivery','agile']},
+    {r:'BL-026',t:'Designed and implemented the data infrastructure capturing engagement telemetry and built the reporting layer executives used for decisions.',g:['data','telemetry','bi','internal tools']},
+    {r:'BL-027',t:'Built partner onboarding workflows that shortened implementation timelines and standardized data handoffs.',g:['workflow automation','onboarding','process','adoption']}]}]},
+ lead:{summary:{key:'lead-master',text:'Operations leader who designs, builds, and ships AI-automated business systems. Combines 12+ years of cross-functional operations leadership with hands-on technical implementation.'},
+  sections:[
+   {org:'BEAM LEGACY GROUP',b:[
+    {r:'BL-014',t:'Architected and launched an autonomous forecasting and decision-automation platform now running live in production \u2014 68 API endpoints, 540 strategy profiles, and automated risk controls.',g:['production','live system','systems architecture','risk automation']},
+    {r:'BL-016',t:'Specify, build, and deploy production-grade platforms as a single operator by directing AI coding agents.',g:['ai agents','autonomy','prototyping','delivery']},
+    {r:'BL-030',t:'Led product design and go-to-market for an AI platform for small-business owners, replacing an estimated $3,700\u2013$9,500/month of agency labor at a $49/month price point.',g:['product','gtm','pricing','adoption','cost']},
+    {r:'BL-031',t:'Owned full product specification, scoring methodology, and pricing architecture.',g:['product','strategy','standards','specification']}]},
+   {org:'COMARKCO',b:[
+    {r:'BL-022',t:'Built the operational, financial, and compliance infrastructure that scaled top-line revenue from $250K to $12M in a single year.',g:['scale','operations','impact','systems']},
+    {r:'BL-032',t:'Secured $3M in working capital, inventory financing, and revolving credit to fund production and market entry.',g:['finance','capital','operations']},
+    {r:'BL-033',t:'Designed and executed international expansion across the Americas, Europe, Asia, and Oceania; established regulatory readiness for 20+ countries.',g:['expansion','compliance','strategy','scale']},
+    {r:'BL-034',t:'Scaled a cross-functional team from lean startup staff to 25 employees, improving retention and accountability.',g:['leadership','team','change management','culture']},
+    {r:'BL-021',t:'Standardized and automated recurring finance, logistics, and reporting workflows across multi-country operations.',g:['workflow automation','process automation','efficiency','time saved']}]},
+   {org:'WORKSITE LABS',b:[
+    {r:'BL-035',t:'Established the Project Management Office, creating governance and prioritization frameworks adopted company-wide.',g:['governance','standards','pmo','change management','adoption']},
+    {r:'BL-025',t:'Product Owner for the digital patient booking platform, owning requirements, UX, and sprint planning.',g:['product','requirements','delivery']},
+    {r:'BL-036',t:'Developed and executed a company-wide customer experience strategy, improving CSAT and NPS and reducing churn.',g:['strategy','adoption','change management','customer']}]}]}};
+
+// selection: score each baseline bullet by tag overlap with the JD keywords
+function selectBullets(p){
+  const base=LIB[p.v], kw=p.kw.map(k=>k.toLowerCase());
+  const hit=g=>g.reduce((n,t)=>n+(kw.some(k=>k.includes(t)||t.includes(k))?1:0),0);
+  return base.sections.map(sec=>{
+    const scored=sec.b.map(b=>({...b,s:hit(b.g)}));
+    const keep=[...scored].sort((a,b)=>b.s-a.s).slice(0,Math.max(3,Math.ceil(sec.b.length*0.7)));
+    const keepRefs=new Set(keep.filter(b=>b.s>0||keep.indexOf(b)<3).map(b=>b.r));
+    return {org:sec.org,
+      order:[...scored].filter(b=>keepRefs.has(b.r)).sort((a,b)=>b.s-a.s),
+      dropped:scored.filter(b=>!keepRefs.has(b.r)),
+      baseline:sec.b};
+  });
+}
+
+let P=[
+ {id:1,co:'Higharc',compMin:160000,compMax:190000,compSrc:'posted',ko:[],coCount:1,ti:'AI Enablement Lead',comp:'$160–190K posted',loc:'US Remote',age:'14h',score:88,
+  d:[24,19,13,15,13,9,0],v:'eng',stage:'queue',
+  rat:'Posting is explicitly about building and shipping production internal AI tools for workflows without a current owner, plus owning adoption metrics like time saved per workflow. Remote-first since 2018, $83M raised. Build/ship vocabulary throughout rather than roadmap-and-standards language — this is an IC role wearing a Lead title.',
+  kw:['internal AI tools','high-leverage workflows','adoption metrics','time saved per workflow','production','AI roadmap'],
+  gaps:['Construction-tech domain knowledge','Named experience with their specific stack'],
+  brief:'Lead with the production system and the validation gate. Their metric is time saved per workflow — bring the cost-reduction framing. Ask what the first three workflows would be.',
+  rt:'Reports to engineering leadership; JD references partnering with a Sr. AI Engineer and Special Projects',
+  nc:[{n:'Michael',t:'named in JD as co-owner of the internal AI roadmap'}],
+  tt:['VP Engineering','Head of Product','Sr. AI Engineer'],
+  sig:['Remote-first since founding in 2018','Raised $83M with 18+ strategic investors','Building internal AI roadmap alongside engineering leadership']},
+
+ {id:2,co:'Liquid Agency',compMin:null,compMax:null,compSrc:'absent',ko:['5+ years in program management, ops, or business transformation — verify yours counts'],coCount:1,ti:'AI Enablement Lead',comp:'not posted',loc:'US Remote',age:'2d',score:84,
+  d:[23,18,13,14,8,8,0],v:'lead',stage:'queue',
+  rat:'Owns implementation and operationalization of Claude Enterprise, redesigns workflows, and moves pilots into repeatable processes. Wants 5+ years in program management, ops, or business transformation. Strong overlap, though agency-wide enablement means meaningful training and change-management load. Comp not posted — ask early.',
+  kw:['Claude Enterprise','workflow redesign','prompt libraries','AI Champions','change management','pilots to scalable processes'],
+  gaps:['Agency-side experience','Formal enablement-program ownership'],
+  brief:'You run Claude Code daily — say so in the first line. Their risk is hiring a strategist who has never shipped. Offer the Sightline repo as evidence.',
+  rt:'Not stated in posting',nc:[],
+  tt:['Chief Operating Officer','Head of Operations','Director of Technology'],
+  sig:['Implementing Claude Enterprise agency-wide','Building a department AI Champions network']},
+
+ {id:3,co:'Zillow',compMin:150000,compMax:185000,compSrc:'posted',ko:['May carry direct reports — clarify on screen'],coCount:2,ti:'Data & AI Operations Manager',comp:'$150–185K posted',loc:'US Remote',age:'1d',score:79,
+  d:[21,17,13,15,13,10,-10],v:'eng',stage:'queue',
+  rat:'Legal & Compliance operations team building internal tooling and automation. Comp band fits and the company is established enough for predictable hours. Flagged: "Manager" title may carry direct reports — worth clarifying on the screen whether this is IC or people management.',
+  kw:['legal operations','internal tooling','process automation','data operations','efficiency'],
+  gaps:['Legal/compliance ops domain','Named enterprise data stack'],
+  brief:'Ask in the first five minutes whether this role has direct reports. If yes, it is not the job you want.',
+  rt:'Reports into Legal & Compliance Operations leadership',nc:[],
+  tt:['Director of Legal Operations','Senior Manager, L&C Operations'],
+  sig:['L&C Operations team is building internal tooling and automation']},
+
+ {id:4,co:'Interdependence',compMin:null,compMax:null,compSrc:'absent',ko:[],coCount:1,ti:'Director of AI Automation',comp:'not posted',loc:'US Remote',age:'3d',score:76,
+  d:[22,17,12,13,7,7,-2],v:'lead',stage:'queue',
+  rat:'Designing scalable automation workflows and managing development pods across the company brands. The pod language maps almost exactly onto how you have been working. Director title and "managing pods" suggests people leadership — verify scope.',
+  kw:['AI-driven automation','scalable workflows','development pods','operational efficiency'],
+  gaps:['PR/communications industry context'],
+  brief:'The pod architecture parallel is your opening line. Clarify whether pods are people or agents.',
+  rt:'Not stated',nc:[],tt:['Chief Technology Officer','VP Operations'],
+  sig:['Building AI-driven automation across a portfolio of brands','Running development pods']},
+
+ {id:5,co:'CodePath.org',compMin:140000,compMax:165000,compSrc:'posted',ko:['Curriculum design experience required'],coCount:1,ti:'Senior AI Operations Lead',comp:'$140–165K posted',loc:'US Remote',age:'5d',score:72,
+  d:[20,15,12,15,12,7,-9],v:'lead',stage:'queue',
+  rat:'Layered enablement program — onboarding, internal community, office hours, function-specific curriculum co-developed with each team. Comp fits. Heavy on teaching and community-building, which is further from build work than you said you want. Nonprofit, so comp ceiling is real.',
+  kw:['enablement layers','internal community','function-specific curriculum','office hours','adoption'],
+  gaps:['Curriculum design','Nonprofit operating context'],
+  brief:'Honest fit question: this is closer to teaching than building. Worth a conversation, not a priority.',
+  rt:'Not stated',nc:[],tt:['VP of Technology','Chief of Staff'],
+  sig:['Running enablement in layers from onboarding through curriculum']},
+
+ {id:6,co:'CSAA Insurance Group',compMin:null,compMax:null,compSrc:'absent',ko:['Enterprise governance experience at scale required'],coCount:1,ti:'Director, AI Enablement',comp:'not posted',loc:'US Remote',age:'6d',score:64,
+  d:[17,14,11,14,6,8,-6],v:'lead',stage:'queue',
+  rat:'Enterprise AI strategy — operating models, standards, human-AI interaction patterns, and a Community of Practice to scale adoption. Substantial evangelism and stakeholder surface. Reads as the executive shape you ruled out, so parked rather than queued.',
+  kw:['operating models','standards','human-AI interaction patterns','Community of Practice'],
+  gaps:['Insurance domain','Enterprise governance at scale'],
+  brief:'Watchlist only. Revisit if the queue thins or if a screen reveals more hands-on scope than the posting suggests.',
+  rt:'Enterprise strategy function',nc:[],tt:['VP Enterprise Architecture','Chief Data Officer'],sig:['Standing up an enterprise AI Community of Practice']},
+
+ {id:7,co:'Cotiviti',compMin:120000,compMax:150000,compSrc:'posted',ko:['Healthcare payer domain required'],coCount:1,ti:'AI Program / Project Manager',comp:'$120–150K posted',loc:'US Remote',age:'4d',score:58,
+  d:[15,12,11,14,9,7,-20],v:'lead',stage:'queue',
+  rat:'Program management for AI initiatives with clear success criteria. Comp band tops out below your target and the scope is coordination rather than building. Flagged on comp and on role shape.',
+  kw:['program management','product requirements','measurable success criteria'],
+  gaps:['Healthcare payer domain'],
+  brief:'Below comp floor at the midpoint. Watchlist.',
+  rt:'Not stated',nc:[],tt:['Director of Program Management'],sig:[]},
+
+ {id:8,co:'JD Power',compMin:null,compMax:null,compSrc:'absent',ko:[],coCount:1,ti:'Head of AI Enablement',comp:'not posted',loc:'Remote US/CA/MX',age:'8d',score:81,
+  d:[23,18,14,14,7,9,-4],v:'lead',stage:'applied',
+  rat:'First dedicated leader of a new AI Enablement Hub, reporting to the Chief Product & Technology Officer, personally driving technical decisions, prototypes, and tooling. High autonomy and genuinely hands-on for a Head-of role — but first-of-function means undefined scope and heavy political surface.',
+  kw:['AI Enablement Hub','prototypes','tooling','set the standards','accelerate adoption','every workflow'],
+  gaps:['Automotive/market-research domain','Enterprise-scale rollout'],
+  brief:'They said prototypes and technical decisions, not strategy decks. Lead with what you have shipped.',
+  rt:'Reports to the Chief Product & Technology Officer',
+  nc:[],tt:['Chief Product & Technology Officer','VP Engineering'],
+  sig:['Standing up a new AI Enablement Hub','Formalizing the AI function after prior investment'],
+  app:{variant:'Leadership',file:'JDPower-leadership-0728.docx',sent:'2026-07-28 09:14',status:'submitted',due:'2026-08-04',notes:'Asked about hub scope on screen \u2014 waiting on recruiter reply.'},
+  o:{name:'',title:'',url:'',sent:null}},
+
+ {id:9,co:'Northbeam Logistics',ti:'Automation Specialist',comp:'',compMin:62000,compMax:78000,compSrc:'posted',loc:'US Remote',age:'1d',score:61,
+  d:[18,15,9,15,2,6,-4],v:'eng',stage:'queue',coCount:1,
+  ko:['Requires 2 days/quarter onsite in Columbus'],
+  rat:'Small logistics company automating manual reporting and order workflows. Work itself is a clean match and almost entirely automatable. Comp is far below target — but the scope is narrow and well-defined, which is the profile you said you would consider stacking.',
+  kw:['workflow automation','reporting automation','order processing','internal tools','Zapier'],
+  gaps:['Named WMS/TMS platforms'],
+  brief:'Low comp, low complexity, high automatability. Ask about contract-vs-W2 and whether scope is deliverable-based.',
+  rt:'Reports to Director of Operations',nc:[],tt:['Director of Operations','VP Operations'],
+  sig:['Automating manual reporting and order workflows for the first time']},
+
+ {id:10,co:'Halcyon Health',ti:'Business Systems Analyst, Automation',comp:'',compMin:95000,compMax:118000,compSrc:'posted',loc:'US Remote',age:'2d',score:66,
+  d:[19,16,10,15,7,6,-7],v:'eng',stage:'queue',coCount:1,
+  ko:['HIPAA/healthcare systems experience required','Bachelor\u2019s in CS or related \u2014 you have BS Business Admin'],
+  rat:'Process automation across billing and intake workflows. Two knockouts flagged: healthcare systems experience and a CS-degree line. Degree requirements are frequently soft; the domain one is more real. Comp below target but within stacking range.',
+  kw:['business process automation','systems analysis','workflow design','integrations','requirements'],
+  gaps:['Healthcare systems','HIPAA compliance context'],
+  brief:'Two flags. Degree line is usually soft — apply anyway and address domain gap directly in the first paragraph.',
+  rt:'Reports to Director of Business Systems',nc:[],tt:['Director of Business Systems','VP Technology'],
+  sig:['Automating billing and intake workflows across the org']},
+
+ {id:11,co:'Zillow',ti:'Automation Engineer, Internal Tools',comp:'',compMin:145000,compMax:175000,compSrc:'posted',loc:'US Remote',age:'6h',score:83,
+  d:[23,19,13,15,12,9,-8],v:'eng',stage:'queue',coCount:2,
+  ko:['Overlaps a role you already applied to at this company'],
+  rat:'Internal tooling and automation for business teams. Strong match on shape and comp. Flagged only because you have an open application at this company — coordinate rather than applying cold twice in the same month.',
+  kw:['internal tools','automation','python','integrations','business systems','api'],
+  gaps:['Large-scale internal platform experience'],
+  brief:'Best fit on the board today. Reference your existing application rather than submitting as a stranger.',
+  rt:'Reports to Engineering Manager, Internal Tools',nc:[],tt:['Engineering Manager, Internal Tools','Director of Engineering'],
+  sig:['Building internal tooling for business teams']}
+];
+
+const FLOOR=150000, LOWBAR=90000;
+function compTier(p){
+  if(p.compSrc!=='posted'||p.compMax==null) return {k:'unknown',t:'comp not posted'};
+  const mid=(p.compMin+p.compMax)/2;
+  const band=`$${Math.round(p.compMin/1000)}\u2013${Math.round(p.compMax/1000)}K`;
+  if(p.compMax>=FLOOR) return {k:'target',t:band};
+  if(mid>=LOWBAR)      return {k:'under',t:band+' \u00b7 below floor'};
+  return {k:'low',t:band+' \u00b7 well below'};
+}
+const $=s=>document.querySelector(s);
+const esc=t=>(t||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');setTimeout(()=>t.classList.remove('on'),1900)}
+
+function badge(p){
+  const cls=p.score>=75?'hi':'mid';
+  const segs=DIMS.map(([nm,max],i)=>{
+    const v=p.d[i], neg=max<0;
+    const h=Math.round(Math.min(1,Math.abs(v)/Math.abs(max))*20)||1;
+    return `<i class="${neg?'neg':''}" style="height:20px" title="${nm}: ${v}/${max}"><b style="height:${h}px"></b></i>`;
+  }).join('');
+  return `<div class="badge ${cls}"><span class="n mono">${p.score}</span><div class="dims">${segs}</div><div class="dimkey">RUBRIC</div></div>`;
+}
+
+function rowHTML(p){
+  const ct=compTier(p);
+  return `<div class="row" data-id="${p.id}">
+    ${badge(p)}
+    <div class="rowmain">
+      <p class="rtitle">${esc(p.co)} — ${esc(p.ti)}</p>
+      <div class="badges">
+        <span class="cb ${ct.k}">${esc(ct.t)}</span>
+        ${p.ko.length?`<span class="ko">${p.ko.length} knockout${p.ko.length>1?'s':''}</span>`:'<span class="clean">clean</span>'}
+        ${p.coCount>1?`<span class="repeat">${p.coCount} roles at this company</span>`:''}
+        <span class="tag ${p.v}">${p.v==='eng'?'Engineer':'Leadership'}</span>
+      </div>
+      <div class="rmeta"><span>${esc(p.loc)}</span><span>seen ${esc(p.age)} ago</span></div>
+      <p class="rrat">${esc(p.rat)}</p>
+    </div>
+    <div class="rowacts"><button class="btn sm ghost tog">Details</button></div>
+    <div class="detail">
+      <div>
+        <section><h4>Keywords to mirror</h4><div class="chips">${p.kw.map(k=>`<span class="chip">${esc(k)}</span>`).join('')}</div></section>
+        <section><h4>Gaps to prepare for</h4><div class="chips">${p.gaps.map(g=>`<span class="chip gap">${esc(g)}</span>`).join('')||'<span class="chip">none flagged</span>'}</div></section>
+        <section><h4>Brief</h4><p style="margin:0;font-size:13px">${esc(p.brief)}</p></section>
+        <section><h4>Knockouts flagged</h4>${p.ko.length?`<ul class="kolist">${p.ko.map(k=>`<li>${esc(k)}</li>`).join('')}</ul>`:'<p style="margin:0;font-size:13px;color:var(--auto)">None — clean description.</p>'}</section>
+        <section><h4>Reporting line extracted</h4><p style="margin:0;font-size:13px">${esc(p.rt||'Not stated in posting')}</p></section>
+      </div>
+      <div>
+        <section><h4>Rubric breakdown</h4>
+          <table class="dimtable">${DIMS.map(([nm,max],i)=>`<tr><td>${nm}</td><td>${p.d[i]} / ${max}</td></tr>`).join('')}
+          <tr><td><b>Total</b></td><td>${p.score}</td></tr></table>
+        </section>
+        <section><h4>Actions</h4>
+          <div class="acts">
+            ${p.stage==='queue'||p.stage==='watch'?`<button class="btn go" data-act="approve">Approve → build resume</button>
+            <button class="btn" data-act="defer">Defer</button>
+            <button class="btn ghost" data-act="reject">Reject</button>`:
+            `<span class="pill submitted">approved</span>`}
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>`;
+}
+
+let QF='all';
+function drawQueue(){
+  let q=P.filter(p=>p.stage==='queue');
+  q=q.filter(p=>{
+    if(p.score<QV.score) return false;
+    const days=p.age.includes('h')?0:parseInt(p.age);
+    if(days>QV.age) return false;
+    if(p.ko.length>QV.ko) return false;
+    if(p.compSrc==='posted'){
+      if(p.compMax<QV.salMin||p.compMin>QV.salMax) return false;
+    } else if(!QV.noSal) return false;
+    return true;
+  });
+  const f={clean:p=>p.ko.length===0,
+           flagged:p=>p.ko.length>0,
+           target:p=>compTier(p).k==='target',
+           below:p=>['under','low'].includes(compTier(p).k)}[QF];
+  const shown=f?q.filter(f):q;
+  shown.sort((a,b)=>b.score-a.score);
+  $('#queueRows').innerHTML=shown.length?shown.map(rowHTML).join(''):'<div class="empty">Nothing matches this filter.</div>';
+  $('#c-queue').textContent=q.length;
+  $('#qfilters .ct').textContent=q.length;
+}
+
+function drawApps(){
+  const a=P.filter(p=>['approved','applied'].includes(p.stage));
+  $('#c-apps').textContent=a.length;
+  if(!a.length){$('#appsWrap').innerHTML='<div class="empty">Nothing approved yet. Approve something in the queue.</div>';return}
+  const STATUSES=['building','ready to submit','submitted','screen','interview','offer','rejected','ghosted'];
+  $('#appsWrap').innerHTML=`<table class="grid"><thead><tr>
+    <th>Company</th><th>Role</th><th>Resume</th><th>Status</th><th>Submitted</th><th>Follow-up</th><th>Notes</th><th></th></tr></thead><tbody>
+    ${a.map(p=>{const ap=p.app||{};
+      const st=ap.status||'building';
+      const overdue=ap.due&&ap.due<'2026-07-30';
+      const pillCls={'submitted':'submitted','screen':'screen','interview':'interview','rejected':'rejected','ghosted':'ghosted'}[st]||'unsent';
+      return `<tr data-id="${p.id}">
+        <td><b>${esc(p.co)}</b><br><span class="tag ${p.v}">${esc(ap.variant||'')}</span></td>
+        <td>${esc(p.ti)}</td>
+        <td>${ap.file?`<a href="#" class="mono" style="font-size:11.5px">${esc(ap.file)}</a>
+             ${ap.finalFile?`<br><span class="cc">sent: ${esc(ap.finalFile)}</span>`:(ap.sent?'<br><span class="cc" style="color:var(--gate)">final not recorded</span>':'')}
+             <br><button class="btn sm ghost" data-diff="${p.id}" style="margin-top:4px">View changes</button>
+             ${ap.sent&&!ap.finalFile?`<button class="btn sm ghost" data-final="${p.id}" style="margin-top:4px">Record final</button>`:''}`:'<span class="cc">building\u2026</span>'}</td>
+        <td><span class="pill ${pillCls}">${esc(st)}</span><br>
+            <select data-st="${p.id}" style="margin-top:5px">${STATUSES.map(x=>`<option ${x===st?'selected':''}>${x}</option>`).join('')}</select></td>
+        <td class="mono" style="font-size:11.5px">${esc(ap.sent||'\u2014')}</td>
+        <td class="due ${overdue?'now':''}">${esc(ap.due||'\u2014')}</td>
+        <td style="min-width:170px"><textarea class="notesin" data-nt="${p.id}" rows="2" placeholder="screen notes, contacts, next step">${esc(ap.notes||'')}</textarea></td>
+        <td>${ap.sent?'':`<button class="btn sm go" data-mark="${p.id}">Mark submitted</button>`}</td>
+      </tr>`}).join('')}</tbody></table>`;
+}
+
+function renderDiff(id){
+  const p=P.find(x=>x.id===id);
+  const base=LIB[p.v], sel=p.sel||selectBullets(p);
+  const vname=p.v==='eng'?'Engineer':'Leadership';
+  $('#mtitle').textContent=`${p.co} — ${p.ti} · ${vname} variant`;
+  const kept=sel.reduce((n,s2)=>n+s2.order.length,0), drop=sel.reduce((n,s2)=>n+s2.dropped.length,0);
+  $('#mbody').innerHTML=`
+   <div class="dlegend">
+     <span><i style="background:var(--auto)"></i>Included</span>
+     <span><i style="background:var(--gate)"></i>Promoted \u2014 matched a JD keyword</span>
+     <span><i style="background:var(--rule)"></i>Dropped for this application</span>
+     <span class="mono">${kept} bullets in \u00b7 ${drop} out</span>
+   </div>
+   <div class="dcols">
+     <div class="dcol"><h4>Baseline \u2014 ${vname} master</h4>
+       <div class="dsec">Summary</div>
+       <div class="summarybox" style="border-left-color:var(--rule)">${esc(base.summary.text)}</div>
+       ${sel.map(sc=>`<div class="dsec">${esc(sc.org)}</div>`+
+         sc.baseline.map(b=>`<div class="db"><span class="ref">${b.r}</span>${esc(b.t)}</div>`).join('')).join('')}
+     </div>
+     <div class="dcol new"><h4>Tailored for this posting</h4>
+       <div class="dsec">Summary</div>
+       <div class="summarybox">${esc(base.summary.text)}</div>
+       ${sel.map(sc=>`<div class="dsec">${esc(sc.org)}</div>`+
+         sc.order.map(b=>`<div class="db ${b.s>0?'promoted':'kept'}"><span class="ref">${b.r}${b.s>0?' \u00b7 moved up':''}</span>${esc(b.t)}${b.s>0?`<span class="why">matched: ${esc(b.g.filter(g=>p.kw.some(k=>k.toLowerCase().includes(g)||g.includes(k.toLowerCase()))).join(', ')||'keyword overlap')}</span>`:''}</div>`).join('')+
+         sc.dropped.map(b=>`<div class="db dropped"><span class="ref">${b.r} \u00b7 dropped</span>${esc(b.t)}</div>`).join('')).join('')}
+     </div>
+   </div>
+   <p class="hint" style="margin:16px 0 0">Assembly is selection only \u2014 every line above exists verbatim in the approved library. Nothing was rewritten for this posting.</p>`;
+  $('#mask').classList.add('on');
+}
+
+function drafts(p,name){
+  const first=(name||'there').split(' ')[0];
+  const sig=p.sig[0]||'the role you posted';
+  return {
+    note:`${first} — saw ${p.co} is ${sig.charAt(0).toLowerCase()+sig.slice(1)}. I build production AI automation: shipped an autonomous decision system running live, 68 endpoints with automated risk controls. 12 years in ops before that. Open to a short conversation about the ${p.ti} role?`,
+    msg:`Hi ${first},\n\nSaw the ${p.ti} posting — the line about ${sig.charAt(0).toLowerCase()+sig.slice(1)} is what caught me.\n\nI build this kind of thing hands-on. Most recently an autonomous decision-automation platform running live in production: 68 API endpoints, automated risk controls, and a validation layer that gates what's allowed to reach execution. Twelve years running operations before that, so the automations get built against how a business actually runs.\n\nI've applied through your process. Worth 15 minutes?\n\nJames`,
+    subj:`${p.ti} — question about internal tooling scope`,
+    email:`Hi ${first},\n\nSaw the ${p.ti} posting mentions ${sig.charAt(0).toLowerCase()+sig.slice(1)}. That's most of what I've done for the past year — I built and run an autonomous decision-automation system in production, 68 endpoints with automated risk controls, plus the validation layer that gates what reaches live execution.\n\nTwelve years in operations before that, so I build against how a business actually runs.\n\nWorth a 15-minute conversation?\n\nJames Beam\nbeamlegacy.com`
+  };
+}
+
+function drawOut(){
+  const a=P.filter(p=>['approved','applied'].includes(p.stage));
+  $('#c-out').textContent=a.length;
+  if(!a.length){$('#outWrap').innerHTML='<div class="empty">Approve something first — outreach follows an application.</div>';return}
+  $('#outWrap').innerHTML=a.map(p=>{
+    const o=p.o||{name:'',title:'',url:''};
+    const q=encodeURIComponent(p.co+' '+(p.tt[0]||''));
+    return `<div class="oc" data-id="${p.id}">
+      <div class="ochead"><div><b>${esc(p.co)}</b> — ${esc(p.ti)}</div>
+        ${o.sent?`<span class="pill submitted">sent ${esc(o.sent)}</span>`:'<span class="pill unsent">not sent</span>'}</div>
+      <div class="ocgrid">
+        <div>
+          <div class="kv"><span class="label">Reports to (extracted)</span>${esc(p.rt||'Not stated in posting')}</div>
+          ${p.nc.length?`<div class="kv"><span class="label">Named in posting</span>${p.nc.map(c=>`${esc(c.n)} — ${esc(c.t)}`).join('<br>')}</div>`:''}
+          <div class="kv"><span class="label">Who to look for</span>${p.tt.map(t=>`<span class="chip">${esc(t)}</span>`).join(' ')}</div>
+          <div class="kv"><span class="label">Research</span>
+            <a href="https://www.linkedin.com/search/results/people/?keywords=${q}" target="_blank" rel="noopener">Open LinkedIn people search →</a></div>
+        </div>
+        <div>
+          <span class="label">Company signals (verbatim — use one as your opener)</span>
+          ${p.sig.map(s=>`<div class="sig">${esc(s)}</div>`).join('')||'<div class="sig">None extracted.</div>'}
+        </div>
+      </div>
+      <div class="target">
+        <span class="label">Target — fill from your LinkedIn research</span>
+        <div class="f" style="margin-top:7px">
+          <input type="text" placeholder="Name" data-f="name" value="${esc(o.name)}">
+          <input type="text" placeholder="Title" data-f="title" value="${esc(o.title)}">
+        </div>
+        <input type="text" placeholder="LinkedIn profile URL" data-f="url" value="${esc(o.url)}" style="width:100%;margin-bottom:9px">
+        <button class="btn go" data-gen="${p.id}">Generate drafts</button>
+        ${o.sent?'':`<button class="btn" data-sent="${p.id}">Mark sent</button>`}
+      </div>
+      <div class="drafts" id="dr-${p.id}"></div>
+    </div>`}).join('');
+}
+
+function renderDrafts(id){
+  const p=P.find(x=>x.id===id), o=p.o||{};
+  if(!o.name){toast('Enter a target name first');return}
+  const d=drafts(p,o.name);
+  const box=$('#dr-'+id);
+  box.innerHTML=`
+    <div class="draft"><div class="dhead"><span class="label">LinkedIn connection note</span><span class="cc">${d.note.length} chars — verify current cap</span></div><div class="dbody">${esc(d.note)}<div class="acts"><button class="btn sm" data-cp="n-${id}">Copy</button></div></div></div>
+    <div class="draft"><div class="dhead"><span class="label">LinkedIn message</span><span class="cc">${d.msg.split(/\s+/).length} words</span></div><div class="dbody">${esc(d.msg)}<div class="acts"><button class="btn sm" data-cp="m-${id}">Copy</button></div></div></div>
+    <div class="draft"><div class="dhead"><span class="label">Email — plain text, send from your own inbox</span><span class="cc">${d.email.split(/\s+/).length} words</span></div><div class="dbody"><div class="subj">Subject: ${esc(d.subj)}</div>${esc(d.email)}<div class="acts"><button class="btn sm" data-cp="e-${id}">Copy body</button><button class="btn sm" data-cp="s-${id}">Copy subject</button></div></div></div>`;
+  box.classList.add('on');
+  box._d=d;
+}
+
+document.addEventListener('click',e=>{
+  const tab=e.target.closest('nav button');
+  if(tab){document.querySelectorAll('nav button').forEach(b=>b.setAttribute('aria-selected',b===tab));
+    document.querySelectorAll('.view').forEach(v=>v.classList.toggle('on',v.id==='v-'+tab.dataset.v));return}
+
+  if(e.target.classList.contains('tog')){e.target.closest('.row').classList.toggle('open');return}
+
+  const act=e.target.dataset.act;
+  if(act){
+    const row=e.target.closest('.row'), p=P.find(x=>x.id==row.dataset.id);
+    if(act==='approve'){p.stage='approved';p.sel=selectBullets(p);
+      p.app={variant:p.v==='eng'?'Engineer':'Leadership',file:null,sent:null,status:'building',due:null,notes:''};
+      p.o={name:'',title:'',url:''};toast('Approved \u2014 assembling resume');
+      setTimeout(()=>{p.app.file=`${p.co.replace(/\W/g,'')}-${p.v}-0730.docx`;p.app.status='ready to submit';drawAll();toast('Resume ready \u2014 review before sending');},1400);}
+    if(act==='reject'){const why=prompt('Why is this a no? (feeds rubric calibration)','');
+      if(why===null)return; p.stage='rejected';p.rejectWhy=why||'no reason given';
+      toast('Rejected \u2014 reason logged for rubric v2');}
+    if(act==='defer'){p.stage='watch';toast('Deferred to watchlist');}
+    drawAll();return}
+
+  const mk=e.target.dataset.mark;
+  if(mk){const p=P.find(x=>x.id==mk);
+    if(p.app.status==='building'){toast('Resume still assembling');return}
+    p.stage='applied';
+    p.app.sent='2026-07-30 '+new Date().toTimeString().slice(0,5);p.app.status='submitted';p.app.due='2026-08-06';
+    toast('Submitted \u2014 follow-up set for Aug 6');drawAll();return}
+
+  const fin=e.target.dataset.final;
+  if(fin){const p=P.find(x=>x.id==fin);
+    const nm=prompt('Filename of the version you actually submitted (after your edits):',p.app.file);
+    if(nm){p.app.finalFile=nm;toast('Final version recorded');drawAll();} return}
+
+  const qf=e.target.closest('#qfilters button');
+  if(qf){QF=qf.dataset.f;document.querySelectorAll('#qfilters button').forEach(b=>b.setAttribute('aria-pressed',b===qf));drawQueue();return}
+
+  const df=e.target.dataset.diff;
+  if(df){renderDiff(+df);return}
+  if(e.target.id==='mclose'||e.target.id==='mask'){$('#mask').classList.remove('on');return}
+  if(e.target.id==='mdl'){toast('Downloading .docx');return}
+
+  const gen=e.target.dataset.gen;
+  if(gen){const p=P.find(x=>x.id==gen), card=e.target.closest('.oc');
+    p.o=p.o||{};card.querySelectorAll('[data-f]').forEach(i=>p.o[i.dataset.f]=i.value);
+    renderDrafts(+gen);return}
+
+  const st=e.target.dataset.sent;
+  if(st){const p=P.find(x=>x.id==st);p.o=p.o||{};
+    const card=e.target.closest('.oc');card.querySelectorAll('[data-f]').forEach(i=>p.o[i.dataset.f]=i.value);
+    p.o.sent=new Date().toISOString().slice(0,10);toast('Outreach logged — follow up in 7 days');drawAll();return}
+
+  const cp=e.target.dataset.cp;
+  if(cp){const [k,id]=cp.split('-'); const box=$('#dr-'+id); const d=box._d;
+    const txt={n:d.note,m:d.msg,e:d.email,s:d.subj}[k];
+    navigator.clipboard?.writeText(txt).then(()=>toast('Copied')).catch(()=>toast('Copy failed — select manually'));}
+});
+
+document.addEventListener('change',e=>{
+  const id=e.target.dataset.st;
+  if(id){const p=P.find(x=>x.id==id);p.app.status=e.target.value;
+    if(e.target.value==='submitted'&&!p.app.sent){p.app.sent='2026-07-30 09:00';p.app.due='2026-08-06';p.stage='applied';}
+    toast('Status \u2192 '+e.target.value);drawAll();}
+  const nt=e.target.dataset.nt;
+  if(nt){const p=P.find(x=>x.id==nt);p.app.notes=e.target.value;}
+});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')$('#mask').classList.remove('on')});
+
+// ---------------- settings ----------------
+let QV={salMin:0,salMax:500000,score:55,age:21,ko:9,noSal:true};
+let CFG={
+  inc:['ai engineer','automation engineer','ai enablement','workflow automation',
+       'internal tools engineer','integration engineer','business systems analyst',
+       'ai operations','business automation','ai implementation'],
+  exc:['sales engineer','recruiter','intern']
+};
+
+function drawTags(){
+  [['tiInc','inc',''],['tiExc','exc','neg']].forEach(([id,key,cls])=>{
+    const box=$('#'+id), inp=box.querySelector('input');
+    box.querySelectorAll('.tg').forEach(t=>t.remove());
+    CFG[key].forEach((t,i)=>{
+      const el=document.createElement('span');
+      el.className='tg '+cls;
+      el.innerHTML=`${esc(t)}<button data-rm="${key}:${i}" aria-label="remove">\u00d7</button>`;
+      box.insertBefore(el,inp);
+    });
+  });
+}
+
+function preview(){
+  // stand-in for the free blurred-preview call; scales with query breadth
+  const breadth=CFG.inc.length, narrow=CFG.exc.length;
+  const day=Math.max(4,Math.round(breadth*5.2-narrow*1.6+(Math.random()*6-3)));
+  const week=Math.round(day*6.4), back=Math.round(day*34);
+  $('#pDay').textContent=day; $('#pWeek').textContent=week.toLocaleString(); $('#pBack').textContent=back.toLocaleString();
+  const budget=parseInt($('#cMonth').value||1500,10), perDay=Math.round(budget/30);
+  const days=Math.floor(budget/Math.max(day,1));
+  let msg;
+  if(day>perDay*1.25){
+    msg=`<b style="color:var(--stop)">Too broad.</b> At ${day}/day you'd exhaust ${budget.toLocaleString()} credits in about ${days} days. Trim titles or raise the employee-count floor.`;
+  }else if(day<perDay*0.5){
+    msg=`<b style="color:var(--gate)">Possibly too narrow.</b> ${day}/day uses roughly ${Math.round(day*30)} credits a month against a ${budget.toLocaleString()} budget. You have room to widen.`;
+  }else{
+    msg=`<b style="color:var(--auto)">Well sized.</b> ${day}/day is about ${Math.round(day*30).toLocaleString()} credits a month against ${budget.toLocaleString()}. Roughly ${Math.round(day*0.2)} reaching the queue daily.`;
+  }
+  msg+=`<br><span class="cc">Backlog of ${back.toLocaleString()} is a separate one-time cost \u2014 about ${(back/budget).toFixed(1)} months of credits if swept in one run.</span>`;
+  $('#prevMsg').innerHTML=msg;
+  // blurred sample — what preview mode actually returns
+  const titles=CFG.inc.slice(0,8), sen=['mid_level','senior','senior','staff','mid_level'];
+  const rows=titles.map((t,i)=>{
+    const has=i%3!==1;
+    const lo=90+i*11, hi=lo+32;
+    return `<tr>
+      <td>${esc(t.replace(/\b\w/g,c=>c.toUpperCase()))}</td>
+      <td class="sal">${has?`$${lo}\u2013${hi}K`:'<span style="color:var(--muted)">not posted</span>'}</td>
+      <td>${sen[i%5]}</td>
+      <td class="mono" style="font-size:11px">${i%2?'Remote \u00b7 US':'Remote \u00b7 US'}</td>
+      <td class="mono" style="font-size:11px">${i}d ago</td>
+      <td><span class="blur">Acme Holdings Inc</span></td>
+      <td><span class="blur">apply.example.com/jobs/1</span></td>
+    </tr>`}).join('');
+  $('#prevPrec').innerHTML=`<div class="sampwrap"><table class="samp"><thead><tr>
+      <th>Job title</th><th>Salary</th><th>Seniority</th><th>Location</th><th>Posted</th><th>Company</th><th>URL</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>
+    <p class="sampnote"><b>Blurred fields cost nothing and can't be used.</b> Preview returns title, salary, seniority, location, dates, company size, funding stage, and tech tags. It withholds the job description, company name, and every URL \u2014 so you can judge the query, not work from it.</p>
+    <p class="sampnote">Scan the titles. If your query is dragging in roles from the wrong discipline, this is where you'd see it \u2014 a count never would.</p>`;
+  $('#prevOut').style.display='block';
+}
+
+document.addEventListener('keydown',e=>{
+  const box=e.target.closest('.taginput');
+  if(box&&e.key==='Enter'){e.preventDefault();
+    const key=box.id==='tiInc'?'inc':'exc', v=e.target.value.trim().toLowerCase();
+    if(v&&!CFG[key].includes(v)){CFG[key].push(v);e.target.value='';drawTags();}
+  }
+});
+document.addEventListener('click',e=>{
+  const rm=e.target.dataset.rm;
+  if(rm){const [k,i]=rm.split(':');CFG[k].splice(+i,1);drawTags();return}
+  if(e.target.id==='doPrev'){preview();return}
+  const pt=e.target.closest('.tabs2 button');
+  if(pt){document.querySelectorAll('.tabs2 button').forEach(x=>x.setAttribute('aria-selected',x===pt));
+    $('#prevSize').style.display=pt.dataset.pt==='size'?'block':'none';
+    $('#prevPrec').style.display=pt.dataset.pt==='prec'?'block':'none';return}
+  if(e.target.id==='qApply'){
+    QV={salMin:+($('#qSalMin').value||0), salMax:+($('#qSalMax').value||1e7),
+        score:+($('#qScore').value||0), age:+($('#qAge').value||999),
+        ko:+$('#qKo').value, noSal:$('#qNoSal').checked};
+    drawQueue(); qCount();
+    toast('Queue filters applied \u2014 no credits spent');
+    document.querySelector('nav button[data-v="queue"]').click();
+    return}
+  if(e.target.id==='fSalOn'){
+    const on=e.target.checked, row=$('#fSalRow');
+    row.style.opacity=on?'1':'.4'; row.style.pointerEvents=on?'auto':'none';
+    return}
+});
+
+function qCount(){
+  const all=P.filter(p=>p.stage==='queue').length;
+  const shown=document.querySelectorAll('#queueRows .row').length;
+  const el=$('#qCount'); if(el) el.innerHTML=`<b>${shown}</b> of <b>${all}</b> fetched postings shown \u00b7 the other ${all-shown} are still stored, not deleted`;
+}
+function drawAll(){drawQueue();drawApps();drawOut();drawTags();qCount();}
+drawAll();
+</script>
+</body>
+</html>
