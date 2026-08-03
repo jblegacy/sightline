@@ -280,13 +280,15 @@ No salary floor in the query — low-comp roles surface flagged, not filtered, a
 
 ## 5. Stage 2 — Filter (02:30), no model calls
 
-Cheap, deterministic, can't hallucinate. Expect it to remove 60–75% of volume.
+Cheap, deterministic, can't hallucinate. Corrected against CLAUDE.md, which is authoritative where the two disagree:
 
-- Not remote → archive
-- Comp posted and below floor ($150K) → archive
-- Red-flag phrase hit → archive
-- Location restricted outside OR / US-remote → archive
-- Posted >21 days ago → deprioritize (stale postings convert poorly)
+- Not remote → archive (`postings.remote_flag == 'false'`; TheirStack's own `remote: true` fetch filter already does most of this work, this is a safety net for ambiguous cases)
+- Red-flag phrase hit → archive, **only if `settings.red_flag_phrases` is non-empty**. No phrases are defined anywhere yet — not invented here, since that's editorial judgment about what disqualifies a posting, not something to guess at. Starts as a no-op until filled in from the dashboard.
+
+**Removed from this stage, moved elsewhere:**
+- ~~Comp posted and below floor → archive~~ — CLAUDE.md is explicit and non-negotiable: comp is a **flag, not a filter**. Never archive on comp. (The original spec draft got this wrong; CLAUDE.md wins.)
+- ~~Location restricted outside OR/US-remote → archive~~ — detecting this reliably needs judgment (reading what the JD actually says about location), not a keyword list nobody's written. Handled instead as a knockout flag during scoring (Stage 3), consistent with CLAUDE.md's "hard requirements get flagged, not filtered."
+- ~~Posted >21 days ago → deprioritize~~ — this is a **queue-layer** concern (`settings.queue_max_age_days`, already in the schema), not a Stage 2 archive. Two filter layers, never merged — see CLAUDE.md.
 
 Always write `filter_reason`. When you later find the filter was too aggressive, that column is how you prove it.
 
