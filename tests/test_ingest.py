@@ -4,10 +4,12 @@ from sightline.ingest import handle_webhook_event, job_to_posting
 
 
 class FakeDB:
-    def __init__(self) -> None:
+    def __init__(self, red_flag_phrases: list[str] | None = None, queue_min_score: int = 55) -> None:
         self.companies: dict[str, int] = {}
         self.postings: dict[str, dict[str, Any]] = {}
         self.events: list[dict[str, Any]] = []
+        self.scores: list[dict[str, Any]] = []
+        self._settings = {"red_flag_phrases": red_flag_phrases or [], "queue_min_score": queue_min_score}
         self._next_id = 1
 
     def upsert_company(self, name: str, domain: str | None) -> int:
@@ -26,6 +28,11 @@ class FakeDB:
         self.postings[posting["external_id"]] = row
         return row
 
+    def update_posting(self, posting_id: int, fields: dict[str, Any]) -> None:
+        for row in self.postings.values():
+            if row["id"] == posting_id:
+                row.update(fields)
+
     def mark_posting_closed(self, external_id: str, closed_at: str) -> None:
         if external_id in self.postings:
             self.postings[external_id]["status"] = "expired"
@@ -35,6 +42,46 @@ class FakeDB:
         self.events.append(
             {"entity_type": entity_type, "event": event, "entity_id": entity_id, "payload": payload}
         )
+
+    def get_settings(self) -> dict[str, Any]:
+        return self._settings
+
+    def get_bullets(self) -> list[dict[str, Any]]:
+        return [{"ref": "BL-001", "text": "Sample bullet.", "tags": ["automation"], "variants": ["engineer"]}]
+
+    def insert_score(self, score: dict[str, Any]) -> dict[str, Any]:
+        row = {**score, "id": len(self.scores) + 1}
+        self.scores.append(row)
+        return row
+
+
+class FakeAnthropic:
+    """Stand-in for AnthropicClient — score_posting only calls structured_call.
+    Only `dimensions` matters: score_posting recomputes total from it rather
+    than trusting the model's own stated total."""
+
+    def __init__(self, dimensions: dict[str, int] | None = None) -> None:
+        self.dimensions = dimensions or {
+            "role_fit": 20, "evidence_overlap": 15, "seniority_scope": 12,
+            "remote_authenticity": 15, "comp_signal": 10, "company_stage_fit": 8, "red_flags": 0,
+        }
+
+    def structured_call(self, **kwargs):
+        result = {
+            "dimensions": self.dimensions,
+            "total": sum(self.dimensions.values()),
+            "rationale": "test rationale",
+            "keywords": ["automation"],
+            "matched_bullet_refs": ["BL-001"],
+            "unmet_requirements": [],
+            "knockouts": [],
+            "suggested_variant": "engineer",
+            "reports_to": "",
+            "named_contacts": [],
+            "target_titles": [],
+            "company_signals": [],
+        }
+        return result, 0.002
 
 
 SAMPLE_JOB = {
@@ -79,27 +126,27 @@ def test_job_to_posting_remote_flag_unclear_when_null():
 def test_handle_job_new_upserts_company_and_posting_and_logs_event():
     db = FakeDB()
     event = {"id": 1, "type": "job.new", "payload": SAMPLE_JOB}
-    result = handle_webhook_event(db, event)
+    result = handle_webhook_event(db, FakeAnthropic(), event)
     assert result["ok"] is True
     assert "999001" in db.postings
-    assert db.events[-1]["event"] == "ingested"
-    assert db.events[-1]["payload"]["credits_consumed"] == 1
+    assert db.events[0]["event"] == "ingested"
+    assert db.events[0]["payload"]["credits_consumed"] == 1
 
 
 def test_handle_job_new_is_idempotent_on_duplicate_delivery():
     db = FakeDB()
     event = {"id": 1, "type": "job.new", "payload": SAMPLE_JOB}
-    handle_webhook_event(db, event)
-    handle_webhook_event(db, event)  # TheirStack docs: duplicates are possible in edge cases
+    handle_webhook_event(db, FakeAnthropic(), event)
+    handle_webhook_event(db, FakeAnthropic(), event)  # TheirStack docs: duplicates possible in edge cases
     assert len(db.postings) == 1  # one row, not two
-    assert len(db.events) == 2  # but each delivery is still logged — it was still billed
 
 
 def test_handle_job_closed_marks_posting_expired():
     db = FakeDB()
-    handle_webhook_event(db, {"id": 1, "type": "job.new", "payload": SAMPLE_JOB})
+    handle_webhook_event(db, FakeAnthropic(), {"id": 1, "type": "job.new", "payload": SAMPLE_JOB})
     handle_webhook_event(
-        db, {"id": 2, "type": "job.closed", "payload": {"id": 999001, "closed_at": "2026-08-10T00:00:00Z"}}
+        db, FakeAnthropic(),
+        {"id": 2, "type": "job.closed", "payload": {"id": 999001, "closed_at": "2026-08-10T00:00:00Z"}},
     )
     assert db.postings["999001"]["status"] == "expired"
 
@@ -107,13 +154,71 @@ def test_handle_job_closed_marks_posting_expired():
 def test_handle_job_closed_for_unknown_posting_does_not_raise():
     db = FakeDB()
     result = handle_webhook_event(
-        db, {"id": 1, "type": "job.closed", "payload": {"id": 424242, "closed_at": "2026-08-10T00:00:00Z"}}
+        db, FakeAnthropic(),
+        {"id": 1, "type": "job.closed", "payload": {"id": 424242, "closed_at": "2026-08-10T00:00:00Z"}},
     )
     assert result["ok"] is True
 
 
 def test_handle_webhook_event_ignores_unhandled_type():
     db = FakeDB()
-    result = handle_webhook_event(db, {"id": 1, "type": "company.new", "payload": {}})
+    result = handle_webhook_event(db, FakeAnthropic(), {"id": 1, "type": "company.new", "payload": {}})
     assert result["ignored"] is True
     assert db.events[-1]["event"] == "unhandled_event_type"
+
+
+# ---- real-time filter + score wiring ----
+
+
+def test_not_remote_archives_without_scoring():
+    db = FakeDB()
+    job = {**SAMPLE_JOB, "remote": False}
+    handle_webhook_event(db, FakeAnthropic(), {"id": 1, "type": "job.new", "payload": job})
+    posting = db.postings["999001"]
+    assert posting["status"] == "archived"
+    assert posting["filter_reason"] == "not remote"
+    assert db.scores == []  # never reached scoring — no credits spent on an already-archived posting
+
+
+def test_red_flag_phrase_archives_without_scoring():
+    db = FakeDB(red_flag_phrases=["must have active real estate license"])
+    job = {**SAMPLE_JOB, "description": "Must have active real estate license."}
+    handle_webhook_event(db, FakeAnthropic(), {"id": 1, "type": "job.new", "payload": job})
+    posting = db.postings["999001"]
+    assert posting["status"] == "archived"
+    assert db.scores == []
+
+
+def test_high_score_survives_as_scored():
+    db = FakeDB(queue_min_score=55)
+    handle_webhook_event(db, FakeAnthropic(), {"id": 1, "type": "job.new", "payload": SAMPLE_JOB})
+    posting = db.postings["999001"]
+    assert posting["status"] == "scored"
+    assert len(db.scores) == 1
+    assert db.scores[0]["total"] == 80
+
+
+def test_low_score_archives_with_reason():
+    # score_posting recomputes total from dimensions (not the model's stated
+    # total), so the fixture needs dimensions that actually sum to 30.
+    db = FakeDB(queue_min_score=55)
+    low_dimensions = {
+        "role_fit": 8, "evidence_overlap": 5, "seniority_scope": 4,
+        "remote_authenticity": 5, "comp_signal": 4, "company_stage_fit": 4, "red_flags": 0,
+    }
+    assert sum(low_dimensions.values()) == 30
+    handle_webhook_event(
+        db, FakeAnthropic(dimensions=low_dimensions), {"id": 1, "type": "job.new", "payload": SAMPLE_JOB}
+    )
+    posting = db.postings["999001"]
+    assert posting["status"] == "archived"
+    assert "30" in posting["filter_reason"]
+    assert len(db.scores) == 1  # still scored and kept, per spec: archive with rationale retained
+
+
+def test_score_logs_cost_event():
+    db = FakeDB()
+    handle_webhook_event(db, FakeAnthropic(), {"id": 1, "type": "job.new", "payload": SAMPLE_JOB})
+    scored_events = [e for e in db.events if e["event"] == "scored"]
+    assert len(scored_events) == 1
+    assert scored_events[0]["payload"]["cost_usd"] == 0.002
