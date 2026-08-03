@@ -15,10 +15,12 @@ from fastapi.responses import FileResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 from sightline.anthropic_client import AnthropicClient
+from sightline.assembly import assemble
 from sightline.config import Settings, get_settings
 from sightline.dashboard import postings_to_dashboard_p, settings_to_cfg_qv
 from sightline.db import SightlineDB
 from sightline.ingest import handle_webhook_event
+from sightline.provenance import ProvenanceError
 from sightline.settings_service import preview_query, update_settings
 from sightline.theirstack import TheirStackClient, build_filters_from_settings, verify_webhook_signature
 
@@ -135,6 +137,29 @@ def api_credits(
         "monthly_credits": settings.get("monthly_credits", 200),
         "per_run_cap": settings.get("per_run_cap", 120),
     }
+
+
+@app.post("/api/postings/{posting_id}/assemble", dependencies=[Depends(require_auth)])
+def api_assemble(
+    posting_id: int,
+    body: dict[str, Any],
+    db: SightlineDB = Depends(get_db),
+    anthropic: AnthropicClient = Depends(get_anthropic),
+) -> dict:
+    """Stage 4: selects bullets, gates on provenance, renders and uploads
+    the .docx, generates the brief, and records the variant. `body.variant`
+    optionally overrides the score's suggested_variant ('engineer' or
+    'leadership')."""
+    try:
+        return assemble(db, anthropic, posting_id, variant=body.get("variant"))
+    except ProvenanceError as e:
+        # Not a bypass — the validator already ran and refused. This just
+        # turns that refusal into a response instead of a 500.
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
 
 @app.post("/webhooks/theirstack")
