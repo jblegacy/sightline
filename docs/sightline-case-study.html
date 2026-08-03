@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sightline — I automated my job search. The interesting part is where I didn't.</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#16202B;
+    --ground:#E9EDF1;
+    --panel:#FAFBFC;
+    --rule:#C0CAD3;
+    --rule-soft:#D8DFE5;
+    --muted:#5C6A77;
+    --auto:#1F6B5C;
+    --auto-soft:#CFE0DB;
+    --gate:#B26A00;
+    --gate-soft:#F0DFC4;
+    --display:'Archivo',system-ui,sans-serif;
+    --body:'IBM Plex Sans',system-ui,sans-serif;
+    --mono:'IBM Plex Mono',ui-monospace,monospace;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0;background:var(--ground);color:var(--ink);
+    font-family:var(--body);font-size:16px;line-height:1.62;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:940px;margin:0 auto;padding:0 28px 96px}
+
+  /* ---------- utility type ---------- */
+  .label{
+    font-family:var(--mono);font-size:11px;font-weight:600;
+    letter-spacing:.14em;text-transform:uppercase;color:var(--muted);
+  }
+  .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .ph{
+    color:var(--gate);border-bottom:1.5px dotted var(--gate);
+    font-family:var(--mono);font-weight:600;
+  }
+
+  /* ---------- draft notice ---------- */
+  .draft{
+    margin:0 auto;max-width:940px;padding:14px 28px;
+    border-bottom:1px solid var(--rule);
+    display:flex;gap:14px;align-items:baseline;flex-wrap:wrap;
+  }
+  .draft .label{color:var(--gate)}
+  .draft p{margin:0;font-size:13.5px;color:var(--muted);max-width:62ch}
+
+  /* ---------- masthead ---------- */
+  header{padding:56px 0 0}
+  .eyebrow{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:22px}
+  h1{
+    font-family:var(--display);font-weight:800;
+    font-size:clamp(3.2rem,10vw,6.2rem);line-height:.86;
+    letter-spacing:-.035em;margin:0 0 18px;
+  }
+  .deck{
+    font-family:var(--display);font-weight:500;
+    font-size:clamp(1.24rem,3vw,1.72rem);line-height:1.28;
+    letter-spacing:-.015em;max-width:30ch;margin:0 0 34px;
+  }
+  .deck em{font-style:normal;color:var(--gate)}
+  .meta{
+    border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);
+    padding:16px 0;display:grid;gap:18px;
+    grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+  }
+  .meta div .label{display:block;margin-bottom:5px}
+  .meta div p{margin:0;font-size:14px;font-family:var(--mono)}
+
+  /* ---------- sections ---------- */
+  section{padding-top:64px}
+  h2{
+    font-family:var(--display);font-weight:600;
+    font-size:1.42rem;letter-spacing:-.018em;margin:0 0 6px;
+  }
+  .sub{margin:0 0 26px;color:var(--muted);font-size:14.5px;max-width:60ch}
+  p{max-width:68ch}
+  p+p{margin-top:1.05em}
+
+  /* ---------- THE RAIL (signature) ---------- */
+  .rail{background:var(--panel);border:1px solid var(--rule);padding:30px 26px 26px}
+  .rail-head{
+    display:flex;justify-content:space-between;align-items:baseline;
+    gap:16px;flex-wrap:wrap;padding-bottom:18px;margin-bottom:22px;
+    border-bottom:1px solid var(--rule-soft);
+  }
+  .rail-head h3{
+    font-family:var(--display);font-weight:600;font-size:1.05rem;
+    margin:0;letter-spacing:-.01em;
+  }
+  .key{display:flex;gap:16px;flex-wrap:wrap}
+  .key span{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .chip{width:11px;height:11px;flex:none;display:inline-block}
+  .chip.a{background:var(--auto)}
+  .chip.h{background:var(--gate)}
+
+  .stage{
+    display:grid;grid-template-columns:1fr 78px;gap:10px;
+    align-items:center;padding:9px 0;
+  }
+  .stage-name{
+    font-family:var(--mono);font-size:11.5px;font-weight:500;
+    letter-spacing:.07em;text-transform:uppercase;
+    margin:0 0 7px;color:var(--ink);
+  }
+  .stage-note{
+    font-family:var(--body);font-size:12.5px;color:var(--muted);
+    letter-spacing:0;text-transform:none;font-weight:400;margin-left:9px;
+  }
+  .bar{
+    height:15px;background:var(--auto);
+    transform-origin:left center;
+  }
+  .stage.human .bar{background:var(--gate)}
+  .stage .count{
+    font-family:var(--mono);font-size:19px;font-weight:600;
+    text-align:right;font-variant-numeric:tabular-nums;
+  }
+  .stage.human .count{color:var(--gate)}
+
+  /* the interrupting gate */
+  .gate{
+    margin:20px -26px;padding:15px 26px;
+    background:var(--gate);color:#fff;
+    display:flex;align-items:baseline;gap:16px;flex-wrap:wrap;
+  }
+  .gate .g-title{
+    font-family:var(--display);font-weight:800;font-size:.95rem;
+    letter-spacing:.16em;text-transform:uppercase;
+  }
+  .gate .g-note{font-size:13px;opacity:.94;max-width:56ch;font-family:var(--body)}
+
+  .rail-foot{
+    margin-top:22px;padding-top:16px;border-top:1px solid var(--rule-soft);
+    font-size:13px;color:var(--muted);
+  }
+  .rail-foot p{margin:0;max-width:72ch}
+
+  /* ---------- boundary columns ---------- */
+  .cols{display:grid;gap:2px;grid-template-columns:1fr 1fr;background:var(--rule)}
+  .col{background:var(--panel);padding:24px 22px}
+  .col h3{
+    font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.14em;
+    text-transform:uppercase;margin:0 0 16px;padding-bottom:12px;
+    border-bottom:2px solid var(--auto);
+  }
+  .col.human h3{border-bottom-color:var(--gate);color:var(--gate)}
+  .col ul{list-style:none;margin:0;padding:0}
+  .col li{
+    font-size:14.5px;padding:8px 0 8px 17px;position:relative;
+    border-bottom:1px solid var(--rule-soft);
+  }
+  .col li:last-child{border-bottom:0}
+  .col li::before{
+    content:'';position:absolute;left:0;top:16px;
+    width:7px;height:2px;background:var(--auto);
+  }
+  .col.human li::before{background:var(--gate)}
+  .col li b{font-weight:600}
+  .col li span{display:block;color:var(--muted);font-size:13px;margin-top:2px}
+
+  /* ---------- callout ---------- */
+  .callout{
+    background:var(--panel);border-left:4px solid var(--gate);
+    padding:26px 26px 24px;
+  }
+  .callout h3{
+    font-family:var(--display);font-weight:600;font-size:1.12rem;
+    margin:0 0 12px;letter-spacing:-.012em;
+  }
+  .callout p{font-size:15px}
+  table.prov{
+    width:100%;border-collapse:collapse;margin-top:20px;font-size:13.5px;
+  }
+  table.prov th,table.prov td{
+    text-align:left;padding:9px 12px 9px 0;border-bottom:1px solid var(--rule-soft);
+    vertical-align:top;
+  }
+  table.prov th{
+    font-family:var(--mono);font-size:10.5px;font-weight:600;
+    letter-spacing:.13em;text-transform:uppercase;color:var(--muted);
+  }
+  table.prov td:first-child{font-family:var(--mono);font-weight:600;white-space:nowrap}
+  table.prov td:last-child{white-space:nowrap;font-family:var(--mono);font-size:12.5px}
+  .yes{color:var(--auto);font-weight:600}
+  .no{color:var(--gate);font-weight:600}
+
+  /* ---------- build / metrics ---------- */
+  .grid3{display:grid;gap:2px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));background:var(--rule)}
+  .cell{background:var(--panel);padding:20px}
+  .cell .label{display:block;margin-bottom:8px}
+  .cell p{margin:0;font-size:14px}
+  .cell .big{
+    font-family:var(--mono);font-size:26px;font-weight:600;
+    display:block;margin-bottom:4px;letter-spacing:-.02em;
+  }
+
+  footer{
+    margin-top:76px;padding-top:22px;border-top:1px solid var(--rule);
+    display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap;
+    font-family:var(--mono);font-size:12px;color:var(--muted);
+  }
+  footer a{color:var(--ink);text-decoration:none;border-bottom:1px solid var(--rule)}
+  footer a:hover{border-bottom-color:var(--ink)}
+  a:focus-visible,li:focus-visible{outline:2px solid var(--gate);outline-offset:3px}
+
+  /* ---------- motion ---------- */
+  .bar{animation:grow .62s cubic-bezier(.2,.7,.25,1) both}
+  .stage:nth-of-type(1) .bar{animation-delay:.05s}
+  .stage:nth-of-type(2) .bar{animation-delay:.13s}
+  .stage:nth-of-type(3) .bar{animation-delay:.21s}
+  .stage:nth-of-type(4) .bar{animation-delay:.29s}
+  .stage:nth-of-type(5) .bar{animation-delay:.37s}
+  .gate{animation:snap .4s cubic-bezier(.2,.9,.2,1) .52s both}
+  @keyframes grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+  @keyframes snap{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion:reduce){
+    *{animation:none!important;transition:none!important}
+  }
+
+  @media (max-width:640px){
+    .cols{grid-template-columns:1fr}
+    .stage{grid-template-columns:1fr 64px}
+    .wrap{padding:0 18px 72px}
+    .gate{margin:20px -18px;padding:14px 18px}
+    .rail{padding:24px 18px 20px}
+  }
+</style>
+</head>
+<body>
+
+<div class="draft">
+  <span class="label">Draft — not for publication</span>
+  <p>Figures in <span class="ph">amber</span> are placeholders. Fill them from the first 30-day run before this page goes anywhere. A case study with invented numbers is the exact failure this system was built to prevent.</p>
+</div>
+
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">
+      <span class="label">Case study</span>
+      <span class="label">Internal tooling</span>
+      <span class="label">2026</span>
+    </div>
+    <h1>Sightline</h1>
+    <p class="deck">I automated my job search. The interesting part is <em>where I didn't.</em></p>
+    <div class="meta">
+      <div><span class="label">Built by</span><p>James A. Beam</p></div>
+      <div><span class="label">Stack</span><p>Python · SQLite · Claude Batch API · n8n</p></div>
+      <div><span class="label">Build time</span><p><span class="ph">4 weekends</span></p></div>
+      <div><span class="label">Status</span><p>Running nightly</p></div>
+    </div>
+  </header>
+
+  <section>
+    <h2>The premise</h2>
+    <p>Job searching gets described as a volume problem, so the tooling built for it optimizes volume — auto-apply bots, mass submission, hundreds of applications a week. That tooling is now widely available, which means volume has stopped being an advantage and started being noise that everyone contributes to.</p>
+    <p>The actual constraints are different. You never see most of the roles you'd be a fit for, because they're posted on company ATS boards that aggregators index late or not at all. And when you do see one, you're often applying a week after it went live, with material that wasn't written for it.</p>
+    <p>So I built for those two constraints instead: see everything relevant within 24 hours, and arrive with material that matches the posting. Discovery, screening, and assembly are automated. Submission is not — and that boundary is the part of this I'd most want to talk about.</p>
+  </section>
+
+  <section>
+    <h2>What the pipeline does to a week of postings</h2>
+    <p class="sub">Machine stages narrow the field. A human decides what leaves the building.</p>
+
+    <div class="rail">
+      <div class="rail-head">
+        <h3>Weekly throughput</h3>
+        <div class="key">
+          <span><i class="chip a"></i>Automated</span>
+          <span><i class="chip h"></i>Human-owned</span>
+        </div>
+      </div>
+
+      <div class="stage">
+        <div>
+          <p class="stage-name">Sources polled <span class="stage-note">company ATS endpoints + curated boards</span></p>
+          <div class="bar" style="width:100%"></div>
+        </div>
+        <div class="count ph">52</div>
+      </div>
+
+      <div class="stage">
+        <div>
+          <p class="stage-name">Postings ingested</p>
+          <div class="bar" style="width:100%"></div>
+        </div>
+        <div class="count ph">412</div>
+      </div>
+
+      <div class="stage">
+        <div>
+          <p class="stage-name">After dedupe <span class="stage-note">same role, multiple sources</span></p>
+          <div class="bar" style="width:70%"></div>
+        </div>
+        <div class="count ph">287</div>
+      </div>
+
+      <div class="stage">
+        <div>
+          <p class="stage-name">Passed deterministic filter <span class="stage-note">remote, comp floor, exclusions</span></p>
+          <div class="bar" style="width:26%"></div>
+        </div>
+        <div class="count ph">96</div>
+      </div>
+
+      <div class="stage">
+        <div>
+          <p class="stage-name">Scored ≥ 70 on rubric <span class="stage-note">seven weighted dimensions</span></p>
+          <div class="bar" style="width:9%"></div>
+        </div>
+        <div class="count ph">19</div>
+      </div>
+
+      <div class="gate">
+        <span class="g-title">Human gate</span>
+        <span class="g-note">Everything above is a machine narrowing a field. Everything below is a person reading a job description and deciding.</span>
+      </div>
+
+      <div class="stage human">
+        <div>
+          <p class="stage-name">Reviewed and approved</p>
+          <div class="bar" style="width:7%"></div>
+        </div>
+        <div class="count ph">12</div>
+      </div>
+
+      <div class="stage human">
+        <div>
+          <p class="stage-name">Submitted by hand</p>
+          <div class="bar" style="width:7%"></div>
+        </div>
+        <div class="count ph">12</div>
+      </div>
+
+      <div class="rail-foot">
+        <p>Median time from a posting appearing to an application being sent: <span class="ph">19 hours</span>. That number is the point of the whole build. Screening capacity is finite and early applications get read; a nightly cycle is the difference between arriving first and arriving four hundredth.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Where the boundary sits, and why</h2>
+    <p class="sub">Every line on the right was a decision, not a limitation.</p>
+    <div class="cols">
+      <div class="col">
+        <h3>Automated</h3>
+        <ul>
+          <li><b>Ingestion</b><span>One adapter per ATS type. Company-native boards first — they're freshest and least polluted.</span></li>
+          <li><b>Deduplication</b><span>Normalized on company, title, and location. Cuts roughly a third.</span></li>
+          <li><b>Deterministic filtering</b><span>Hard constraints resolved before any model call. Cheaper and it can't hallucinate.</span></li>
+          <li><b>Rubric scoring</b><span>One batched model call per posting, seven weighted dimensions, written rationale required.</span></li>
+          <li><b>Keyword extraction</b><span>Verbatim phrases from the posting, since ATS keyword matching is literal.</span></li>
+          <li><b>Variant assembly</b><span>Selects and orders from an approved bullet library. Never writes a new claim.</span></li>
+          <li><b>Tracking</b><span>Status, follow-up timers, response rate by variant.</span></li>
+        </ul>
+      </div>
+      <div class="col human">
+        <h3>Deliberately not automated</h3>
+        <ul>
+          <li><b>Submission</b><span>ATS terms prohibit it, the major platforms detect it, and a flag in a shared instance can follow you to every company using it.</span></li>
+          <li><b>Free-text answers</b><span>"Why this company" is where a generic answer does more damage than no application at all.</span></li>
+          <li><b>Outreach copy</b><span>Templated cold outreach at volume is the most detectable thing in this market, and it burns the contact permanently.</span></li>
+          <li><b>New resume claims</b><span>See below. This one I learned the hard way.</span></li>
+          <li><b>The final read</b><span>If I haven't read the job description, I don't want the job enough to be applying for it.</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>The provenance rule</h2>
+    <div class="callout">
+      <h3>The failure that shaped the design</h3>
+      <p>While drafting a resume, a bullet appeared describing an internal system as built and deployed. I had specified it in detail. I had not shipped it. Nothing in my notes distinguished those two states — six weeks on, an ambitious plan and a running system read identically — and the bullet was one screen-share question away from being indefensible.</p>
+      <p>So every claim in the library carries a provenance tag, and a validator refuses to assemble a document that violates it. Ten lines of code. It's the most valuable thing in the repository.</p>
+      <table class="prov">
+        <thead><tr><th>Tag</th><th>Meaning</th><th>Ships</th></tr></thead>
+        <tbody>
+          <tr><td>measured</td><td>Instrumented, with a number I can point at</td><td class="yes">Yes</td></tr>
+          <tr><td>stated</td><td>Asserted by me, defensible from a document</td><td class="yes">Yes</td></tr>
+          <tr><td>modeled</td><td>My estimate or projection</td><td class="yes">Qualified only</td></tr>
+          <tr><td>derived</td><td>Inferred by a tool, including by a model</td><td class="no">Never</td></tr>
+        </tbody>
+      </table>
+      <p style="margin-top:20px">The general lesson generalizes past resumes: when a language model summarizes your own notes back to you, it will quietly promote intention to accomplishment, and it will do it in your voice. Systems that put model output in front of people need a layer that asks where each claim came from. That belief is now load-bearing in how I'd deploy this anywhere else.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>How it's built</h2>
+    <div class="grid3">
+      <div class="cell">
+        <span class="label">Ingestion</span>
+        <p>One adapter per ATS type behind a shared interface, so a breaking change is contained to one file. Nightly cron. Content hashing catches edited postings — a quietly added salary band is worth knowing about.</p>
+      </div>
+      <div class="cell">
+        <span class="label">Scoring</span>
+        <p>Deterministic filters run first and remove most volume for free. Survivors go to the Batch API. The rubric was validated against twenty postings I'd already judged by hand before I trusted it.</p>
+      </div>
+      <div class="cell">
+        <span class="label">Store</span>
+        <p>SQLite. Every stage writes to an append-only event log, so three weeks later I can still answer why the system surfaced something. No vector database — the corpus is a few hundred rows.</p>
+      </div>
+      <div class="cell">
+        <span class="label">Assembly</span>
+        <p>Tailoring selects from a tagged library of pre-approved claims and renders to ATS-clean .docx. Output is verified by extracting the text back out and checking it parses in reading order.</p>
+      </div>
+      <div class="cell">
+        <span class="label">Review</span>
+        <p>A local queue showing score, rationale, the diffed variant, and a one-page brief with gaps to prepare for. Approvals, edits, and rejections are logged with reasons.</p>
+      </div>
+      <div class="cell">
+        <span class="label">Feedback</span>
+        <p>Rejection reasons at the gate are the training data for the next rubric revision. Where the scorer and I disagree repeatedly, one of us is wrong and the log says which.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>What I'd say about it in an interview</h2>
+    <p><b>On restraint.</b> The version of this that auto-submits was three hours of additional work. I didn't build it, because the failure mode isn't wasted effort — it's a detection flag in a shared ATS instance that quietly costs you every company on that platform. Most AI deployment decisions look like that: the capability is trivial and the question is entirely about where the blast radius lands.</p>
+    <p><b>On scope.</b> There's no vector store, no agent framework, and no orchestration layer beyond a scheduler, because the corpus is a few hundred rows and keyword matching plus one model call is the right answer. Choosing the boring architecture is a skill and it's badly underrepresented in AI project work right now.</p>
+    <p><b>On what I'd change.</b> I built tailoring before I'd validated the scorer, which meant polishing output from a screener I hadn't checked. Discovery and screening carried nearly all the value; tailoring was a convenience I reached for early because it was more fun to build.</p>
+    <p><b>On the numbers.</b> Response-rate-by-variant is directional, not statistical — the sample is small and confounded by company, timing, and role. I track it because it beats guessing, and I'd rather say that plainly than present it as a finding.</p>
+  </section>
+
+  <footer>
+    <span>Sightline — built and operated by James A. Beam</span>
+    <span><a href="#">Repository</a> · <a href="#">Decisions log</a> · <a href="mailto:james@beamlegacy.com">james@beamlegacy.com</a></span>
+  </footer>
+
+</div>
+</body>
+</html>
