@@ -15,6 +15,14 @@ class FakeDB:
             "red_flag_phrases": red_flag_phrases or [],
             "queue_min_score": queue_min_score,
             "monthly_credits": 200,
+            "score_threshold": 70,
+            "title_include": [],
+            "title_exclude": [],
+            "queue_salary_min": 0,
+            "queue_salary_max": 500000,
+            "queue_max_age_days": 21,
+            "queue_ko_tolerance": 9,
+            "queue_include_no_salary": True,
         }
         self._next_id = 1
 
@@ -29,6 +37,7 @@ class FakeDB:
         existing = self.postings.get(posting["external_id"])
         row = {**(existing or {}), **posting}
         row.setdefault("id", self._next_id)
+        row.setdefault("first_seen_at", "2026-08-03T00:00:00+00:00")  # mimics the real column's default now()
         if not existing:
             self._next_id += 1
         self.postings[posting["external_id"]] = row
@@ -54,6 +63,15 @@ class FakeDB:
 
     def get_bullets(self) -> list[dict[str, Any]]:
         return [{"ref": "BL-001", "text": "Sample bullet.", "tags": ["automation"], "variants": ["engineer"]}]
+
+    def list_scored_postings(self) -> list[dict[str, Any]]:
+        result = []
+        for row in self.postings.values():
+            if row.get("status") != "scored":
+                continue
+            matching_scores = [s for s in self.scores if s.get("posting_id") == row["id"]]
+            result.append({**row, "companies": {"name": "Fake Co"}, "scores": matching_scores})
+        return result
 
     def insert_score(self, score: dict[str, Any]) -> dict[str, Any]:
         row = {**score, "id": len(self.scores) + 1}

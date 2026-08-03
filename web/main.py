@@ -1,15 +1,21 @@
-"""FastAPI app. Currently just the TheirStack webhook receiver + a health
-check; the HTMX dashboard (Phase 4) lands on top of this later."""
+"""FastAPI app: TheirStack webhook receiver, health check, and the dashboard
+(Phase 4) — the real `postings`/`scores` data served in the exact shape
+prototype/sightline-dashboard.html expects."""
 from __future__ import annotations
 
 import json
 import logging
+import secrets
 from functools import lru_cache
+from pathlib import Path
 
-from fastapi import Depends, FastAPI, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi.responses import FileResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 from sightline.anthropic_client import AnthropicClient
 from sightline.config import Settings, get_settings
+from sightline.dashboard import postings_to_dashboard_p, settings_to_cfg_qv
 from sightline.db import SightlineDB
 from sightline.ingest import handle_webhook_event
 from sightline.theirstack import TheirStackClient, verify_webhook_signature
@@ -17,6 +23,21 @@ from sightline.theirstack import TheirStackClient, verify_webhook_signature
 logger = logging.getLogger("sightline.web")
 
 app = FastAPI(title="Sightline")
+
+_basic_auth = HTTPBasic()
+
+
+def require_auth(
+    credentials: HTTPBasicCredentials = Depends(_basic_auth),
+    settings: Settings = Depends(get_settings),
+) -> None:
+    """The dashboard exposes real company names, job descriptions, and comp
+    data on a public URL — this is not optional. Timing-safe comparisons per
+    FastAPI's own recommended pattern for HTTP Basic Auth."""
+    user_ok = secrets.compare_digest(credentials.username, settings.dashboard_username)
+    pass_ok = secrets.compare_digest(credentials.password, settings.dashboard_password)
+    if not (user_ok and pass_ok):
+        raise HTTPException(status_code=401, detail="Unauthorized", headers={"WWW-Authenticate": "Basic"})
 
 
 @lru_cache
@@ -49,6 +70,26 @@ def get_theirstack(settings: Settings = Depends(get_settings)) -> TheirStackClie
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+_DASHBOARD_HTML = Path(__file__).parent / "static" / "dashboard.html"
+
+
+@app.get("/", dependencies=[Depends(require_auth)])
+def dashboard() -> FileResponse:
+    return FileResponse(_DASHBOARD_HTML)
+
+
+@app.get("/api/postings", dependencies=[Depends(require_auth)])
+def api_postings(db: SightlineDB = Depends(get_db)) -> list[dict]:
+    settings = db.get_settings()
+    rows = db.list_scored_postings()
+    return postings_to_dashboard_p(rows, score_threshold=settings.get("score_threshold", 70))
+
+
+@app.get("/api/settings", dependencies=[Depends(require_auth)])
+def api_settings(db: SightlineDB = Depends(get_db)) -> dict:
+    return settings_to_cfg_qv(db.get_settings())
 
 
 @app.post("/webhooks/theirstack")
