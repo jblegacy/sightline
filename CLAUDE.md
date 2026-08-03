@@ -43,10 +43,10 @@ This exists because a resume bullet once described a system as built when it had
 
 ## Architecture
 
-- **Railway** — `worker` (scheduled Python) and `web` (FastAPI + HTMX dashboard)
+- **Railway** — `worker` (scheduled Python, scoring/assembly/digest) and `web` (FastAPI + HTMX dashboard, also receives TheirStack webhooks)
 - **Supabase** — Postgres + private Storage bucket for generated documents
 - **TheirStack** — primary posting source; do not build ATS scrapers, this layer is bought.
-  **Credits burn per job returned, including repeats.** Always pass `discovered_at_gte` from the last successful run. Push every filter server-side — client-side filtering means credits already spent. Use one query with an OR'd title array, never several overlapping queries. Tune with `blur_company_data: true` (free) before running live. Never call Company Search or Technographics (3 credits each). Log credits consumed per run to `events`.
+  **Ingest is webhook-driven, not polled.** TheirStack's own docs recommend webhooks over periodic polling for exactly this use case, and it eliminates the duplicate-charge risk polling carries. The `settings` table still owns the query — the worker/web pushes it to TheirStack via `POST/PATCH /v0/saved_searches` and `/v0/webhooks`, so nothing is hand-configured in their app UI. `job.new`/`job.closed` events land on a `web` endpoint at 1 credit/job, same cost as polling. **Credits burn per job delivered, including repeats — there is no caching.** Never call Company Search or Technographics (3 credits each). Log credits consumed per event to `events`. A one-time backlog sweep (if ever done) must be tranched and bounded — verified backlog for the baseline query was 28,624 open postings, enough to burn ~19 months of a 1,500/month budget in one run if pulled naively.
 - **Anthropic API** — Haiku for scoring, Sonnet for briefs and outreach drafts
 - **Resend** — one daily digest email
 

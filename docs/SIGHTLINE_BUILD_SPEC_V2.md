@@ -220,37 +220,35 @@ create table events (
 
 ---
 
-## 4. Stage 1 — Ingest (02:00)
+## 4. Stage 1 — Ingest (webhook-driven)
 
-See `docs/THEIRSTACK_API_REFERENCE.md` for the full compiled parameter/response reference. It also documents `job.new`/`job.closed` **webhooks** as an alternative to polling — same 1-credit-per-job cost, but zero duplicate-charge risk and near-real-time discovery, at the cost of a public endpoint and the saved search living in TheirStack's app UI rather than in the `settings` table. Worth raising with James once Phase 2 is closer; not decided here.
+All of R1/R2/R3/R4/R5/R6/R9 below are now empirically verified against a live account, not just documentation — see `docs/THEIRSTACK_API_REFERENCE.md` for the full reference. This section supersedes the original polling design: **ingest is webhook-driven**, per TheirStack's own guidance (their docs explicitly recommend webhooks over periodic polling for this exact use case, and it removes the duplicate-charge risk polling carries).
 
 **Buy this layer, don't build it.** TheirStack aggregates from 315k+ sources including LinkedIn, Indeed, Glassdoor and 16k+ ATS platforms (Greenhouse, Lever, Workable), deduplicates automatically, normalizes salary and location into structured fields, and delivers job descriptions as Markdown. That removes the ATS adapters, the dedupe logic, the HTML parsing, the robots.txt/rate-limit handling, and the salary-extraction problem.
 
 ```
 sources/
-  theirstack.py   # primary — one client, filtered queries
+  theirstack.py   # saved-search + webhook management client
   adzuna.py       # free second source, register at developer.adzuna.com
+web/
+  routes/theirstack_webhook.py   # POST endpoint receiving job.new / job.closed
 ```
 
-**Credit model — this drives every design decision.** 1 credit per job *returned*, and repeat requests for the same job charge again. Two rules follow:
+**How settings stay data, not code:** `/v0/saved_searches` and `/v0/webhooks` both have full CRUD (`POST`/`GET`/`PATCH`). When the `settings` row changes (title include/exclude, scope filters, credit budget), the app pushes the update via `PATCH /v0/saved_searches/{id}`, so nothing is hand-configured in TheirStack's app UI — the dashboard remains the single source of truth.
 
-1. **Never fetch the same job twice.** Store the **max `discovered_at` among jobs actually returned** in the last successfully processed run — not the run's wall-clock start time — and pass it as `discovered_at_gte`. This makes a failed/partial run safely resumable: you re-fetch only what was discovered after the last job you actually processed, no gap, no double charge. Optionally add `job_id_not` with recently-seen IDs as a second guard. A naive "posted in last 7 days" nightly poll charges ~7x per job.
-2. **Never return a job you'd discard.** Any filtering done in Python is a credit already spent. Push everything server-side.
+**Credit model.** 1 credit per job delivered via `job.new`/`job.closed`, same rate as polling, no caching — repeated delivery of the same job charges again. `job.closed` fires when a tracked posting closes, useful for keeping `postings.status` current without a second poll.
 
-**Tune with free modes before spending.** `blur_company_data: true` returns blurred results without consuming credits. Free count is `limit: 1` **plus** `include_total_results: true`, which returns `metadata.total_results` — `limit: 1` alone is not documented as free on its own, so implement both together. `include_total_results: true` reportedly reads the whole matching dataset and slows the response noticeably; enable it only on the first page of any paginated call, not on every page. Workflow: build query → count for free → adjust breadth until daily volume ≈ 40–50 → run live.
-
-Verify the free-count claim empirically before building the Preview feature on it: call the credit-balance endpoint, run the count, call balance again — it must be unchanged. Requires a live account; not yet done (see R1 in the handoff).
+**Tune with free modes before subscribing.** `blur_company_data: true` returns blurred results at 0 credits — verified empirically (balance unchanged across repeated free calls). Free count is `limit: 1` **plus** `include_total_results: true`; `include_total_results` reads the whole matching dataset and slows the response, so enable it only on the first page, not every page. `hiring_team` is **not** blurred in preview mode (verified empirically — masked `company`/`description` next to a real `hiring_team` array on the same record), so preview mode is enough to validate outreach coverage for free.
 
 **One query, not many.** Separate queries with overlapping title lists double-charge for jobs matching both ("ai engineer" + "automation engineer" both match "AI Automation Engineer"). Use one query with an OR'd title array. Split only when filters genuinely differ, and keep title lists disjoint.
 
-**Request constraint — read before building the client:** TheirStack requires at least one of `posted_at_max_age_days`, `posted_at_gte`, `posted_at_lte`, `company_domain_or`, `company_linkedin_url_or`, or `company_name_or` on every Job Search call; `discovered_at_gte` alone does not satisfy it and the request will fail validation. Pair `discovered_at_gte` with `posted_at_max_age_days` below.
+**Request constraint:** TheirStack requires at least one of `posted_at_max_age_days`, `posted_at_gte`, `posted_at_lte`, `company_domain_or`, `company_linkedin_url_or`, or `company_name_or` on every Job Search / saved-search call; `discovered_at_gte` alone does not satisfy it and the request fails validation.
 
-**Baseline payload:**
+**Baseline saved-search filters** (same shape used for both the saved search and any manual/backfill query):
 
 ```json
 {
   "posted_at_max_age_days": 30,
-  "discovered_at_gte": "<max discovered_at from last processed run, ISO8601 UTC>",
   "remote": true,
   "job_country_code_or": ["US"],
   "is_closed": false,
@@ -269,13 +267,16 @@ No salary floor in the query — low-comp roles surface flagged, not filtered, a
 
 **Do not use Company Search or Technographics** — 3 credits each vs 1 for a job.
 
-**`hiring_team` arrives free.** The job response includes `hiring_team` (full name, role, LinkedIn URL) and `manager_roles`. Populate the outreach target from it when present; fall back to manual LinkedIn research when absent. This replaces the need for any email-finder tooling.
+**`hiring_team` arrives free but fills rarely.** Measured fill rate on a 100-record live sample: **11%** — below the 15% threshold for leading outreach with a named contact. The Outreach panel's primary path is the generated LinkedIn search link; a populated `hiring_team`/`manager_roles` is a bonus, not the default UX.
 
-**Budget:** 1,500 credits/month ≈ 50 jobs/day ≈ 10 queued/day at a ~20% surface rate. Correctly sized for steady-state flow. The initial backlog of currently-open roles is a separate one-time cost (potentially 1,000–3,000 jobs) — size it with free count mode and take it in tranches, or buy a one-time top-up. Unused credits roll over 12 months.
+**Budget — verified against a live account:**
+- Steady-state volume (7-day average, full production filters): **42.4/day ≈ 1,273/month** — matches the original 1,500/month budget assumption well. (A single-day count showed 9; that was daily noise, not signal — use a multi-day window for any volume check.)
+- **Backlog is much larger than assumed.** Full-filter, no-`discovered_at`-bound count of currently-open matching postings: **28,624**. At 1,500 credits/month that's ~19 months of budget in one sweep — do not run an unbounded backlog pull. If a historical sweep is wanted at all, bound it tightly (e.g. last 30–60 days via `posted_at_max_age_days`) and size it with free count first.
+- Unused *paid* credits roll over 12 months. **Free credits do not** — this account's free grant shows an explicit `earliest_expiration` about a month out from grant, contradicting the earlier assumption of "no time limit."
+- Reposts: a repost is deduped server-side (no recharge) if the *original* posting is within the last 30 days; if the original is 30+ days old, a repost resurfaces as "new" and recharges — documented, expected behavior.
+- Rate limit, verified from live response headers: **4 req/sec, 10/min, 50/hour, 400/day** on the free tier (a since-superseded blog post claims 2/sec — don't trust it; the dedicated rate-limit reference page and live headers agree on 4/sec).
 
-**Instrument burn from day one.** Log credits consumed per query per run into `events`, and surface a burn-rate figure on the metrics view. Poll `/v0/credit-consumption` and the credit-balance endpoint.
-
-**Verify current pricing tiers and per-job credit cost before committing** — that's the one number that determines your monthly bill.
+**Instrument burn from day one.** Log credits consumed per webhook event into `events`, and surface a burn-rate figure on the metrics view. Poll `/v0/teams/credits_consumption` and `/v0/billing/credit-balance` (hyphen, not underscore).
 
 ## 5. Stage 2 — Filter (02:30), no model calls
 

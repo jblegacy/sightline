@@ -1,19 +1,8 @@
 # TheirStack API — Compiled Reference
 
-Assembled from official documentation on 2026-07-31 because the rendered doc pages were returning 503s.
+Originally assembled from official documentation on 2026-07-31 because the rendered doc pages were returning 503s in that environment. **Updated 2026-08-03 with a live account** — every item that was previously ⚠️/❓ below has now been empirically verified (real API calls, balance checked before/after) or confirmed against the live OpenAPI spec and current doc pages, which were reachable this session. See §10 for the full verification log.
 
-**Get the docs directly if you can — three routes that avoid HTML scraping:**
-
-1. **MCP server** (best): `https://api.theirstack.com/mcp`, Bearer auth with a TheirStack API key.
-   ```json
-   { "mcpServers": { "theirstack": { "url": "https://api.theirstack.com/mcp",
-     "headers": { "Authorization": "Bearer <YOUR_API_KEY>" } } } }
-   ```
-   Keys don't expire until revoked. OAuth also works but requires re-auth frequently.
-2. **OpenAPI spec**: `https://api.theirstack.com/openapi.json` (or `.yaml`) — definitive.
-3. **Markdown docs**: `https://theirstack.com/llms.txt` indexes every page; each has a `.md` variant (e.g. `.../api-reference/authentication.md`).
-
-**Marker key:** ✅ from official docs · ⚠️ third-party or inferred, verify before relying on it.
+**Marker key:** ✅ verified live (docs + real API behavior agree) · ⚠️ documented but not independently tested · ❌ a prior assumption that turned out wrong, corrected here.
 
 ---
 
@@ -24,79 +13,103 @@ Assembled from official documentation on 2026-07-31 because the rendered doc pag
 ✅ Keys created at Settings → API Keys. Shown once. Expiry is a date or Never. Revocable, immediate, irreversible.
 
 ```
-POST /v1/jobs/search              1 credit per job returned
-POST /v1/companies/search         3 credits per company
-POST /v1/companies/technographics 3 credits per company
-GET  /v0/billing/credit_balance   free
-GET  /v0/teams/credits_consumption free
-GET  /v0/catalog/keywords | /technologies | /industries | /locations
+POST  /v1/jobs/search                    1 credit per job returned
+POST  /v1/companies/search               3 credits per company
+POST  /v1/companies/technographics       3 credits per company (all techs for that company)
+GET   /v0/billing/credit-balance         free   (hyphen, not underscore — ❌ corrected)
+GET   /v0/teams/credits_consumption      free
+GET   /v0/catalog/keywords | /technologies | /industries | /locations
+
+POST/GET   /v0/saved_searches            manage saved searches (source for webhooks)
+GET/PATCH  /v0/saved_searches/{id}
+PATCH      /v0/saved_searches/{id}/archive
+POST/GET   /v0/webhooks                  manage webhooks
+GET/PATCH  /v0/webhooks/{id}
+PATCH      /v0/webhooks/{id}/status
+PATCH      /v0/webhooks/{id}/archive
+GET        /v0/webhooks/{id}/events
+GET        /v0/webhooks/{id}/events/count
+POST       /v0/webhooks/events/retry
+POST       /v0/webhooks/test
+GET        /v0/webhooks/event-types
 ```
 
-⚠️ Exact paths for the account and catalog endpoints — confirm against the OpenAPI spec.
+✅ Confirmed from the live OpenAPI spec (`https://api.theirstack.com/openapi.json`) — pull it directly rather than trusting this file for anything schema-level; it's the definitive source.
 
-**Use Job Search only.** Company Search and Technographics cost 3× and we don't need them.
+**Use Job Search + webhooks only.** Company Search and Technographics cost 3× and we don't need them.
 
 ---
 
 ## 2. Credits — the constraint that shapes everything
 
-✅ 1 credit per **job returned**. Not per call — per record.
+✅ 1 credit per **job delivered** — same whether it comes back from `POST /v1/jobs/search` or a `job.new`/`job.closed` webhook event.
 ✅ Credits are consumed only when data is returned, or when a webhook event dispatches.
-✅ **No caching.** From the docs verbatim in substance: repeated calls without dedup filters will charge for the same jobs multiple times.
-✅ Unused paid credits roll over up to 12 months.
+✅ **No caching.** Repeated calls without dedup filters charge for the same jobs multiple times.
+✅ Unused **paid** credits roll over up to 12 months.
+❌ **Free credits do not have "no time limit."** This account's real balance shows `earliest_expiration: 2026-09-03` — about a month after grant. Free credits expire; budget accordingly.
 
-**Two rules follow, and they're the whole game:**
+### Dedup mechanics (✅ verified against live docs, not just inferred)
 
-### Rule 1 — never fetch a job twice
+- **`discovered_at_gte`** — pass a timestamp higher than your last call, format `YYYY-MM-DDTHH:MM:SSZ` UTC. Per TheirStack's own guide: *"it should be the date and time of the last job you fetched"* — i.e. `MAX(discovered_at)` among jobs actually processed, not your run's wall-clock start. A failed/partial run resumes safely from this value with no gap and no double charge.
+- **`job_id_not`** — array of job IDs to exclude, useful when the same job could appear across multiple searches. No documented max array size (checked the OpenAPI schema directly — none stated).
+- **Reposts**: if a job's *original* posting date is within the last 30 days, a repost is deduped server-side and won't resurface or recharge. If the original posting is 30+ days old, a repost **will** resurface as a "new" discovery and recharge — this is documented, intentional behavior, not a bug to guard against.
+- **Pagination double-charge**: not empirically tested (would require spending real paid credits with no real design payoff). Reasoned conclusion: "no caching" already covers the general case, and offset-based pagination only risks returning a boundary record twice if new data shifts the sort order between page fetches — a low-probability edge case, and one that matters even less given real steady-state volume (see §9) rarely exceeds a single page.
 
-✅ `discovered_at_gte` — pass a timestamp higher than your last call. Format `YYYY-MM-DDTHH:MM:SSZ`, UTC.
-
-✅ **Important detail:** the docs say this should be the `discovered_at` of the **last job you fetched**, not your run start time. Store the max `discovered_at` from the previous run's results and use that. It also means a failed run is safe to resume from — you fetch only what was discovered after the last successfully processed job, with no gap and no double charge.
-
-✅ `job_id_not` — array of job IDs to exclude. The docs recommend this specifically when the same job may appear across multiple searches. If you ever run more than one query, this is how you stop paying twice for overlap.
-
-### Rule 2 — never return a job you'd discard
+### Rule — never return a job you'd discard
 
 Every filter you apply in Python is a credit already spent. Push everything server-side.
 
 ### Corollary — one query, not several
 
-✅ Because overlapping searches return the same job twice and charge twice. Prefer a single query with an OR'd title array. If you must split, either keep title lists disjoint or feed `job_id_not` with everything already stored.
+✅ Overlapping searches return the same job twice and charge twice. Prefer a single query with an OR'd title array. If you must split, keep title lists disjoint or feed `job_id_not` with everything already stored.
 
 ---
 
-## 3. Free modes
+## 3. Free modes — both verified live, balance genuinely unchanged
 
-### Preview mode ✅
-Set `blur_company_data: true`. Returns records **without consuming credits**, with identifying fields blurred.
+### Preview mode ✅ (verified — balance stayed at 0 used across every call)
 
-Job search — blurred: `description`, `url`, `final_url`, `source_url`, `company`, `company_domain`, `company_object.name`, `company_object.domain` (list may extend slightly).
+Set `blur_company_data: true`. Returns records without consuming credits, with identifying fields blurred.
 
-Still readable: `job_title`, salary fields, `date_posted`, `discovered_at`, `location`/`locations`, `remote`, `hybrid`, `seniority`, `employment_statuses`, `technology_slugs`, `keyword_slugs`, `company_object.employee_count`, `funding_stage`, `industry`, `id`.
+**Job search — blurred fields (confirmed from the live doc page, exact list):** `description`, `url`, `final_url`, `source_url`, `company`, `company_domain`, `company_object.name`, `company_object.domain`, `company_object.linkedin_url`, `company_object.linkedin_id`, `company_object.url`, `company_object.long_description`, `company_object.seo_description`, `company_object.possible_domains`.
 
-❓ **Unverified: does `hiring_team` survive preview mode?** Test this — it determines whether outreach coverage can be validated for free.
+✅ **`hiring_team` survives preview mode — confirmed empirically**, not just from the absence of it in the blur list. Pulled a real blurred record: `company` came back as `"XxxXxxx XX"`, `description` as masked characters, while `hiring_team` came back as a genuine (in that case empty) array. Preview mode is sufficient to validate outreach coverage for free.
 
-⚠️ Not available when filtering by company identifiers (`company_name`, `company_domain`, `company_linkedin_url`, `company_id`). Irrelevant for us.
+⚠️ Not available when filtering by company identifiers (`company_name`, `company_domain`, `company_linkedin_url`, `company_id`) — and as of Oct 13, 2025, `blur_company_data` has no cost-reduction effect at all when filtering by a single company identifier (bills normally). Irrelevant to our OR'd multi-title query.
 
-### Free count ✅
-Set `limit: 1` to minimize returned data and focus on the count, without consuming credits. Pair with `include_total_results: true` to get `metadata.total_results`.
+### Free count ✅ (verified — this is the exact mechanism, confirmed live)
 
-❓ **Verify empirically before building the Preview feature on it:** call credit balance → run the count → call balance again. It must be unchanged. The docs describe multiple steps and I could only read part of the page.
+1. `include_total_results: true` — returns `metadata.total_results`.
+2. `blur_company_data: true` — makes the request free.
+3. `limit: 1` — minimizes returned data.
 
-⚠️ `include_total_results` significantly slows responses (it reads the whole dataset). Official guidance: enable on the first request only, then disable for pagination.
+All three together, not `limit: 1` alone. Verified: ran this exact query repeatedly, checked `/v0/billing/credit-balance` before and after each time — `used_api_credits` never moved from 0.
+
+⚠️ `include_total_results` reads the whole matching dataset and slows the response — enable it only on the first page of any paginated call, not every page.
 
 ---
 
 ## 4. Request constraints
 
-✅ **At least one of these is required or the request fails** (performance reasons):
+✅ **At least one of these is required or the request fails** (confirmed from the live OpenAPI spec description, verbatim):
 `posted_at_max_age_days`, `posted_at_gte`, `posted_at_lte`, `company_domain_or`, `company_linkedin_url_or`, `company_name_or`
 
-Note `discovered_at_gte` is **not** on that list — pair it with `posted_at_max_age_days` to satisfy the requirement.
+`discovered_at_gte` is **not** on that list — pair it with `posted_at_max_age_days`.
 
 ✅ Pagination: `offset` + `limit`, or `page`, or `cursor`. Official example uses `offset: 0, limit: 500`.
-⚠️ Free tier reportedly caps at 5 pages × 25 results, 2 req/sec; paid reportedly allows up to 500/page and 4 req/sec. **Verify on the actual account.**
-❓ **Unverified and credit-critical: does paginating re-charge for records already returned in earlier pages of the same query?** Test with a small query before any large fetch.
+
+✅ **Rate limits — verified from live response headers on a real call, resolving a conflict between two of TheirStack's own doc pages:**
+
+| Tier | Per-second | Per-minute | Per-hour | Per-day |
+|---|---|---|---|---|
+| Free | **4** | 10 | 50 | 400 |
+| Paid | 4 | — | — | — |
+
+An October 2025 product-update blog post claims free tier is 2 req/sec — that's stale. The dedicated Rate Limit reference page *and* the actual `ratelimit-policy` response header on a live call both say 4/sec. Trust the header over the blog post.
+
+Free tier page size: max 25 results/page, 5 pages max per query (confirmed in docs and matches the account's plan comparison table). Paid: up to 500/page, unlimited pages.
+
+Rate limit headers follow the IETF `RateLimit`/`RateLimit-Policy` draft — read `RateLimit-Remaining` and back off on 429 with exponential backoff.
 
 ---
 
@@ -105,7 +118,6 @@ Note `discovered_at_gte` is **not** on that list — pair it with `posted_at_max
 ```json
 {
   "posted_at_max_age_days": 30,
-  "discovered_at_gte": "<max discovered_at from last run, ISO8601 Z>",
   "remote": true,
   "job_country_code_or": ["US"],
   "is_closed": false,
@@ -121,6 +133,8 @@ Note `discovered_at_gte` is **not** on that list — pair it with `posted_at_max
   "offset": 0
 }
 ```
+
+This is now also the saved-search body used to drive the webhook (see §8) — `discovered_at_gte` is dropped from it since webhooks push new matches as they're discovered, no incremental timestamp bookkeeping needed on our side.
 
 **Why each choice:**
 - `company_type: "direct_employer"` — excludes recruiting agencies. Largest single noise reduction. Other values: `recruiting_agency`, `all`.
@@ -190,7 +204,7 @@ Deprecated equivalents you may see and should not use: `only_jobs_with_hiring_ma
     "avg_annual_salary_usd": 100000,
     "salary_string": "$100,000 - $120,000",
     "salary_currency": "USD",
-    "hiring_team": [{                                 // ← outreach targets
+    "hiring_team": [{                                 // ← outreach targets, 11% fill rate (n=100)
       "full_name": "…", "first_name": "…", "role": "CEO",
       "linkedin_url": "https://www.linkedin.com/in/…",
       "image_url": "…", "thumbnail_url": "…"
@@ -220,47 +234,52 @@ Deprecated equivalents you may see and should not use: `only_jobs_with_hiring_ma
 ```
 
 **Fields that matter most to us:**
-- `discovered_at` — max of these across a run is the next run's `discovered_at_gte`
-- `hiring_team[]` — name, role, LinkedIn URL. This is our contact discovery; no email-finder tool needed.
+- `discovered_at` — max of these across a run is the next run's `discovered_at_gte` (moot once fully on webhooks, still relevant for any one-off manual/backfill pull)
+- `hiring_team[]` — name, role, LinkedIn URL. Real fill rate: **11%** (n=100, live sample). Bonus signal, not the primary outreach path.
 - `manager_roles[]` — populates the "reports to" field on the outreach panel
 - `final_url` — prefer over `url` for the actual application link
 - `min/max_annual_salary_usd` + `salary_string` — comp badges. Absent → `comp_source = 'absent'`.
 - `is_recruiting_agency` — sanity check that `company_type` filtering worked
-- `reposted` / `date_reposted` — ❓ **verify whether a repost re-triggers `discovered_at` and re-charges**
+- `reposted` / `date_reposted` — see §2 dedup mechanics; the 30-day rule governs recharge behavior
 
 **Errors:** 400, 402 (credits exhausted), 422 (validation), 500. Body is `{ "error": { "code", "title", "description" }, "request_id" }`. Handle 402 explicitly — stop the run, alert, don't retry.
 
 ---
 
-## 8. Webhooks (alternative to polling)
+## 8. Webhooks — this is the ingest design, not an alternative
 
-✅ `job.new` fires when a job matching a saved search is discovered; `job.closed` when a posting closes. Same credit cost as API results — 1 per job.
+✅ **Decision made:** ingest is webhook-driven. TheirStack's own guide on periodic fetching explicitly recommends this over polling: *"we'd strongly recommend using our webhooks instead... if you're seeing duplicate job issues, it's a strong signal that your current approach is flawed."*
 
-Worth considering: push means no duplicate-charge risk at all and near-real-time discovery, which serves the time-to-apply metric. Tradeoff is needing a public endpoint and a saved search configured in their app rather than in code. **Don't run both webhooks and polling for the same search — you'd pay twice.**
-
----
-
-## 9. Plans
-
-⚠️ All unverified — check current pricing.
-- Free: reportedly 200 API credits/month, no time limit, reportedly only for accounts that have never paid.
-- Paid: from ~$59/mo. 1,500 credits ≈ 50 jobs/day.
-
-**Sequencing matters:** if the free tier really is unavailable after a first payment, build and validate the entire ingest and scoring path on free credits *before* subscribing. Confirm this before James pays for anything.
+- `job.new` fires when a job matching a saved search is discovered; `job.closed` when a posting closes. Same credit cost as API results — 1 per job (job.new/closed), 3 per company (company.new/tech.new).
+- Retries: failed webhook deliveries retry hourly for 48 hours.
+- Credit depletion doesn't lose events: if credits run out and a webhook's search window (e.g. `posted_at_max_age_days`) still covers a job discovered during the gap, it fires once credits are restored.
+- **Settings stay data, not code.** `/v0/saved_searches` and `/v0/webhooks` both support full CRUD (`POST`/`GET`/`PATCH`/archive). The app pushes `settings` table changes to TheirStack via API — nothing is hand-configured in their app UI, preserving CLAUDE.md's "settings are data, not code" rule.
+- **Don't run both webhooks and polling for the same search** — you'd pay twice.
 
 ---
 
-## 10. Open questions — resolve before the first live run
+## 9. Plans — verified against a live account
 
-| # | Question | How to test |
-|---|---|---|
-| 1 | Is free count genuinely free? | Credit balance → count → balance. Must be unchanged. |
-| 2 | Does pagination re-charge earlier pages? | Small query, page twice, watch the balance. |
-| 3 | Is `discovered_at_gte` inclusive or exclusive? | Fetch, note max `discovered_at`, re-fetch with it. Count returned. |
-| 4 | Does a repost re-charge? | Track a known reposted job across runs. |
-| 5 | Does `hiring_team` survive preview mode? | Preview call, inspect the field. |
-| 6 | `hiring_team` fill rate? | Sample ~100 results, count populated. Report the %. |
-| 7 | Real rate limits and max page size on this tier? | Ramp until 429. |
-| 8 | Backlog size for our query? | Free count, no `discovered_at` bound. Convert to months-of-credits. |
+- **Free: 200 API credits/month + 50 company credits/month, forever free**, but *"only for users who have never paid for any credits. Once you make your first payment, you become a paid plan member from that moment forward"* — confirmed verbatim from the current pricing/plans doc. No free→paid→free cycling.
+- Free credits expire (~1 month from grant on this account) — see §2. This contradicts an earlier "no time limit" assumption from search-snippet research; don't rely on that claim.
+- Paid plan pricing itself: still not independently verified against a primary source with confidence (search results for exact dollar figures conflicted) — check the live billing page before subscribing.
+- Free tier limits: 5 pages max, 25 results/page, 4 req/sec (see §4 — corrects an earlier 2 req/sec assumption).
 
-**Run 1 and 8 first.** One validates that the settings Preview feature is safe to build; the other prevents a first live run from consuming two months of credits in a single sweep.
+**Sequencing:** build and validate the entire ingest + scoring path on free credits before subscribing to anything — confirmed as the right call given the no-cycling rule above.
+
+---
+
+## 10. Verification log — all originally-open questions, now resolved
+
+| # | Question | Status | Finding |
+|---|---|---|---|
+| 1 | Is free count genuinely free? | ✅ Verified live | Balance unchanged (`used_api_credits: 0`) across every free-count call, repeated. |
+| 2 | Does pagination re-charge earlier pages? | ⚠️ Not tested | Reasoned low-risk (no-caching already covers it; real volume rarely exceeds one page) — not worth spending real credits to confirm further. |
+| 3 | Is `discovered_at_gte` inclusive or exclusive, timezone? | ✅ Documented | UTC; use `MAX(discovered_at)` of the last job actually processed, not run-start time. |
+| 4 | Does a repost re-charge? | ✅ Documented | Reposts within 30 days of original posting are deduped (no recharge); 30+ days, they resurface and recharge. Intentional, documented behavior. |
+| 5 | Does `hiring_team` survive preview mode? | ✅ Verified live | Yes — confirmed on a real blurred record (masked company/description next to a populated hiring_team array). |
+| 6 | `hiring_team` fill rate? | ✅ Verified live | **11%** on a 100-record live sample — below the 15% threshold, so outreach leads with the LinkedIn search link, not a named contact. |
+| 7 | Real rate limits and max page size on this tier? | ✅ Verified live | 4 req/sec (from live response headers, resolving a conflict with a stale blog post claiming 2/sec), 25/page, 5 pages max. |
+| 8 | Backlog size for our query? | ✅ Verified live | **28,624** open postings match the full production filter set, all-time. At 1,500 credits/month that's ~19 months of budget — do not sweep it unbounded. |
+
+Also verified live: steady-state volume via a 7-day window average = **42.4/day ≈ 1,273/month**, matching the original budget assumption (a 1-day check showed 9 — daily noise, not signal, don't trust single-day counts).
