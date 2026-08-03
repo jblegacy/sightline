@@ -125,6 +125,13 @@ def test_upsert_saved_search_creates_when_none_exists():
     result = client.upsert_saved_search("sightline", {"posted_at_max_age_days": 30})
     assert result["id"] == 42
     assert create.called
+    import json as _json
+
+    body = _json.loads(create.calls.last.request.content)
+    # SavedSearchCreate uses `body`/`type`, not `filters`/`search_type` —
+    # verified against the live OpenAPI spec, easy field to get wrong.
+    assert body["body"] == {"posted_at_max_age_days": 30}
+    assert body["type"] == "jobs"
 
 
 @respx.mock
@@ -148,14 +155,48 @@ def test_upsert_webhook_creates_with_signing_secret():
     )
     client = TheirStackClient(api_key="fake")
     client.upsert_webhook(
-        name="sightline",
         saved_search_id=42,
         url="https://example.com/webhooks/theirstack",
         secret="a-long-enough-secret-value",
-        event_types=["job.new", "job.closed"],
+        event_types=["job_new", "job_closed"],
     )
     import json as _json
 
     body = _json.loads(create.calls.last.request.content)
+    # WebhookCreateRequestV0 uses `search_id`/`active_event_types`, not
+    # `saved_search_id`/`event_types` — and has no `name` field at all.
+    assert body["search_id"] == 42
+    assert body["active_event_types"] == ["job_new", "job_closed"]
     assert body["secret"] == "a-long-enough-secret-value"
     assert body["trigger_once_per_company"] is False
+
+
+@respx.mock
+def test_upsert_webhook_listen_from_now_sets_listening_start_time():
+    respx.get(f"{BASE}/v0/webhooks").mock(return_value=httpx.Response(200, json=[]))
+    create = respx.post(f"{BASE}/v0/webhooks").mock(return_value=httpx.Response(201, json={"id": 7}))
+    client = TheirStackClient(api_key="fake")
+    client.upsert_webhook(
+        saved_search_id=42,
+        url="https://example.com/webhooks/theirstack",
+        secret="a-long-enough-secret-value",
+        event_types=["job_new"],
+        listen_from_now=True,
+    )
+    import json as _json
+
+    body = _json.loads(create.calls.last.request.content)
+    assert "listening_start_time" in body  # omitted/null would replay the full backlog
+
+
+@respx.mock
+def test_find_webhook_matches_by_url_not_name():
+    respx.get(f"{BASE}/v0/webhooks").mock(
+        return_value=httpx.Response(
+            200, json=[{"id": 1, "url": "https://example.com/webhooks/theirstack", "search_id": 42}]
+        )
+    )
+    client = TheirStackClient(api_key="fake")
+    found = client.find_webhook("https://example.com/webhooks/theirstack")
+    assert found is not None
+    assert found["id"] == 1

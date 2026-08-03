@@ -126,9 +126,12 @@ class TheirStackClient:
         return None
 
     def upsert_saved_search(self, name: str, filters: dict[str, Any]) -> dict[str, Any]:
+        """Field names (`body`, `type`) verified against the live OpenAPI spec
+        (SavedSearchCreate/SavedSearchUpdate) — the API doesn't use `filters`/
+        `search_type` despite those being the more obvious guesses."""
         _require_dedup_filter(filters)
         existing = self.find_saved_search(name)
-        body = {"name": name, "search_type": "jobs", "filters": filters}
+        body = {"name": name, "type": "jobs", "body": filters, "is_alert_active": True}
         if existing:
             resp = self._client.patch(f"/v0/saved_searches/{existing['id']}", json=body)
         else:
@@ -136,33 +139,49 @@ class TheirStackClient:
         resp.raise_for_status()
         return resp.json()
 
-    def find_webhook(self, name: str) -> dict[str, Any] | None:
+    def find_webhook(self, url: str) -> dict[str, Any] | None:
+        """WebhookResponseV0 has no `name` field — match on `url` instead,
+        verified against the live OpenAPI spec."""
         resp = self._client.get("/v0/webhooks")
         resp.raise_for_status()
         for w in resp.json():
-            if w.get("name") == name:
+            if w.get("url") == url:
                 return w
         return None
 
     def upsert_webhook(
         self,
-        name: str,
         saved_search_id: int,
         url: str,
         secret: str,
         event_types: list[str],
-        start_from: str = "now",
+        description: str = "",
+        listen_from_now: bool = True,
     ) -> dict[str, Any]:
-        existing = self.find_webhook(name)
-        body = {
-            "name": name,
-            "saved_search_id": saved_search_id,
+        """event_types use underscore form (job_new, job_closed) per
+        WebhookEventType — the *delivered* event payload's own `type` field
+        uses dots (job.new, job.closed); these are two different enums for
+        the request vs. the response, both verified against the live spec.
+
+        listen_from_now=True sets listening_start_time to now, matching the
+        webhook-driven design decision (no backlog sweep). Passing False (or
+        omitting listening_start_time) makes TheirStack replay every
+        historical match too — that's the 28,624-job backlog, don't do it
+        without deliberately tranching it first.
+        """
+        existing = self.find_webhook(url)
+        body: dict[str, Any] = {
             "url": url,
+            "search_id": saved_search_id,
+            "description": description,
             "secret": secret,
-            "event_types": event_types,
-            "start_from": start_from,
+            "active_event_types": event_types,
             "trigger_once_per_company": False,
         }
+        if listen_from_now:
+            import datetime as _dt
+
+            body["listening_start_time"] = _dt.datetime.now(_dt.timezone.utc).isoformat()
         if existing:
             resp = self._client.patch(f"/v0/webhooks/{existing['id']}", json=body)
         else:
