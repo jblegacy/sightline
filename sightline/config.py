@@ -25,6 +25,8 @@ class Settings:
     theirstack_webhook_secret: str | None
     theirstack_webhook_url: str | None
     anthropic_api_key: str
+    dashboard_username: str
+    dashboard_password: str
 
 
 @lru_cache
@@ -36,4 +38,6 @@ def get_settings() -> Settings:
         theirstack_webhook_secret=os.environ.get("THEIRSTACK_WEBHOOK_SECRET"),
         theirstack_webhook_url=os.environ.get("THEIRSTACK_WEBHOOK_URL"),
         anthropic_api_key=_required("ANTHROPIC_API_KEY"),
+        dashboard_username=os.environ.get("DASHBOARD_USERNAME", "james"),
+        dashboard_password=_required("DASHBOARD_PASSWORD"),
     )

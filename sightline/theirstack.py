@@ -46,8 +46,10 @@ def _require_dedup_filter(filters: dict[str, Any]) -> None:
 def build_filters_from_settings(settings: dict[str, Any]) -> dict[str, Any]:
     """Map a `settings` table row to the TheirStack filter body.
 
-    No salary filter — deliberately. See CLAUDE.md: a fetch-time salary filter
-    drops every posting with no published band, which is most of them.
+    No salary filter by default — deliberately. See CLAUDE.md: a fetch-time
+    salary filter drops every posting with no published band, which is most
+    of them. Only applied if the user explicitly opts in via
+    settings.fetch_salary_filter (off by default; don't change that).
     """
     filters: dict[str, Any] = {
         "posted_at_max_age_days": 30,
@@ -62,6 +64,18 @@ def build_filters_from_settings(settings: dict[str, Any]) -> dict[str, Any]:
     }
     if settings.get("open_only", True):
         filters["is_closed"] = False
+    if settings.get("seniority"):
+        filters["job_seniority_or"] = settings["seniority"]
+    if settings.get("source_exclude"):
+        filters["url_domain_not"] = settings["source_exclude"]
+    # Off by default per CLAUDE.md — a fetch-time salary filter drops every
+    # posting with no published band, which is most of them. Only applied
+    # when the user has explicitly opted in via the Criteria tab toggle.
+    if settings.get("fetch_salary_filter"):
+        if settings.get("fetch_salary_min"):
+            filters["min_salary_usd"] = settings["fetch_salary_min"]
+        if settings.get("fetch_salary_max"):
+            filters["max_salary_usd"] = settings["fetch_salary_max"]
     return filters
 
 
@@ -186,6 +200,20 @@ class TheirStackClient:
             resp = self._client.patch(f"/v0/webhooks/{existing['id']}", json=body)
         else:
             resp = self._client.post("/v0/webhooks", json=body)
+        resp.raise_for_status()
+        return resp.json()
+
+    def set_webhook_active(self, webhook_id: int, is_active: bool) -> dict[str, Any]:
+        """Disabling stops delivery, but does NOT discard matches found while
+        disabled — TheirStack's own docs: re-enabling delivers (and charges
+        for) everything that matched in the meantime. Not a full stop on its
+        own; pair with set_saved_search_active to actually stop matching."""
+        resp = self._client.patch(f"/v0/webhooks/{webhook_id}/status", json={"is_active": is_active})
+        resp.raise_for_status()
+        return resp.json()
+
+    def set_saved_search_active(self, search_id: int, is_active: bool) -> dict[str, Any]:
+        resp = self._client.patch(f"/v0/saved_searches/{search_id}", json={"is_alert_active": is_active})
         resp.raise_for_status()
         return resp.json()
 

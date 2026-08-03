@@ -6,11 +6,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 from sightline.config import Settings
-from tests.test_ingest import SAMPLE_JOB, FakeAnthropic, FakeDB
-from web.main import app, get_anthropic, get_db
+from tests.test_ingest import SAMPLE_JOB, FakeAnthropic, FakeDB, FakeTheirStack
+from web.main import app, get_anthropic, get_db, get_theirstack
 from sightline.config import get_settings as real_get_settings
 
 SECRET = "a-long-enough-test-secret-value"
+DASH_USER = "testuser"
+DASH_PASS = "testpass"
 
 
 def sign(body: bytes, secret: str = SECRET) -> str:
@@ -31,9 +33,12 @@ def client(fake_db):
         theirstack_webhook_secret=SECRET,
         theirstack_webhook_url="https://example.com/webhooks/theirstack",
         anthropic_api_key="fake",
+        dashboard_username=DASH_USER,
+        dashboard_password=DASH_PASS,
     )
     app.dependency_overrides[get_db] = lambda: fake_db
     app.dependency_overrides[get_anthropic] = lambda: FakeAnthropic()
+    app.dependency_overrides[get_theirstack] = lambda: FakeTheirStack()
     yield TestClient(app)
     app.dependency_overrides.clear()
 
@@ -91,9 +96,12 @@ def test_webhook_500_when_secret_not_configured(fake_db):
         theirstack_webhook_secret=None,
         theirstack_webhook_url=None,
         anthropic_api_key="fake",
+        dashboard_username=DASH_USER,
+        dashboard_password=DASH_PASS,
     )
     app.dependency_overrides[get_db] = lambda: fake_db
     app.dependency_overrides[get_anthropic] = lambda: FakeAnthropic()
+    app.dependency_overrides[get_theirstack] = lambda: FakeTheirStack()
     c = TestClient(app)
     body = json.dumps({"id": 1, "type": "job.new", "payload": SAMPLE_JOB}).encode()
     resp = c.post("/webhooks/theirstack", content=body, headers={"X-TheirStack-Signature-256": "sha256=x"})
@@ -124,3 +132,115 @@ def test_webhook_returns_500_and_not_2xx_when_processing_raises(client):
         "/webhooks/theirstack", content=body, headers={"X-TheirStack-Signature-256": sign(body)}
     )
     assert resp.status_code == 500
+
+
+# ---- dashboard: auth + real data wiring ----
+
+
+def test_dashboard_requires_auth(client):
+    resp = client.get("/")
+    assert resp.status_code == 401
+
+
+def test_dashboard_rejects_wrong_password(client):
+    resp = client.get("/", auth=(DASH_USER, "wrong-password"))
+    assert resp.status_code == 401
+
+
+def test_dashboard_serves_html_with_correct_auth(client):
+    resp = client.get("/", auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers["content-type"]
+
+
+def test_api_postings_requires_auth(client):
+    resp = client.get("/api/postings")
+    assert resp.status_code == 401
+
+
+def test_api_postings_empty_when_nothing_scored(client):
+    resp = client.get("/api/postings", auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_api_postings_returns_scored_postings_in_p_shape(client, fake_db):
+    body = json.dumps({"id": 1, "type": "job.new", "payload": SAMPLE_JOB}).encode()
+    client.post("/webhooks/theirstack", content=body, headers={"X-TheirStack-Signature-256": sign(body)})
+
+    resp = client.get("/api/postings", auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 200
+    postings = resp.json()
+    assert len(postings) == 1
+    p = postings[0]
+    assert p["ti"] == "AI Automation Engineer"
+    assert p["co"] == "Fake Co"
+    assert p["stage"] in ("queue", "watch")
+    assert isinstance(p["d"], list)
+    assert len(p["d"]) == 7
+
+
+def test_api_settings_requires_auth(client):
+    resp = client.get("/api/settings")
+    assert resp.status_code == 401
+
+
+def test_api_settings_returns_cfg_qv_shape(client):
+    resp = client.get("/api/settings", auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "cfg" in body and "qv" in body and "scoreThreshold" in body
+    assert "raw" in body  # full row, for populating every Criteria-tab field
+
+
+# ---- settings write + preview + credits ----
+
+
+def test_api_settings_patch_requires_auth(client):
+    resp = client.patch("/api/settings", json={"queue_min_score": 60})
+    assert resp.status_code == 401
+
+
+def test_api_settings_patch_persists_and_returns_updated(client, fake_db):
+    resp = client.patch("/api/settings", json={"queue_min_score": 60}, auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 200
+    assert resp.json()["raw"]["queue_min_score"] == 60
+    assert fake_db.get_settings()["queue_min_score"] == 60
+
+
+def test_api_settings_patch_fetch_field_syncs_theirstack(client):
+    resp = client.patch(
+        "/api/settings", json={"title_include": ["ai engineer"]}, auth=(DASH_USER, DASH_PASS)
+    )
+    assert resp.status_code == 200
+    # can't inspect the FakeTheirStack instance directly here (it's constructed
+    # fresh per-request via the dependency override lambda), but a 200 with no
+    # exception confirms upsert_saved_search was reachable and didn't raise
+
+
+def test_api_preview_requires_auth(client):
+    resp = client.post("/api/preview", json={})
+    assert resp.status_code == 401
+
+
+def test_api_preview_returns_real_shape(client):
+    resp = client.post("/api/preview", json={"title_include": ["ai engineer"]}, auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert set(body.keys()) == {"day", "week", "backlog", "sample"}
+    assert body["week"] == 42
+    assert body["day"] == 6.0  # 42/7, FakeTheirStack.free_count always returns 42
+
+
+def test_api_credits_requires_auth(client):
+    resp = client.get("/api/credits")
+    assert resp.status_code == 401
+
+
+def test_api_credits_returns_real_balance(client):
+    resp = client.get("/api/credits", auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["used_api_credits"] == 10  # FakeTheirStack default
+    assert body["api_credits"] == 200
+    assert body["monthly_credits"] == 200

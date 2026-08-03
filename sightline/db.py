@@ -123,3 +123,26 @@ class SightlineDB:
         )
         resp.raise_for_status()
         return resp.json()[0]
+
+    def update_settings(self, fields: dict[str, Any]) -> dict[str, Any]:
+        resp = self._client.patch(
+            "/settings", params={"id": "eq.1"}, headers={"Prefer": "return=representation"},
+            json=fields,
+        )
+        resp.raise_for_status()
+        return resp.json()[0]
+
+    def list_scored_postings(self) -> list[dict[str, Any]]:
+        """Postings that survived scoring — status='scored' means total already
+        cleared queue_min_score (anything lower was archived at ingest time).
+        Embeds company and score in one PostgREST call rather than N+1 queries."""
+        resp = self._client.get(
+            "/postings",
+            params={
+                "status": "eq.scored",
+                "select": "*,companies(id,name),scores(*)",
+                "order": "first_seen_at.desc",
+            },
+        )
+        resp.raise_for_status()
+        return resp.json()
