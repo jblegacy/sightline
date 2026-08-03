@@ -287,3 +287,111 @@ def test_api_assemble_blocks_unverified_bullets_with_422(client, fake_db):
     resp = client.post(f"/api/postings/{posting_id}/assemble", json={}, auth=(DASH_USER, DASH_PASS))
     assert resp.status_code == 422
     assert "status=draft" in resp.json()["detail"]
+
+
+def test_api_variant_detail_requires_auth(client):
+    resp = client.get("/api/postings/1/variant")
+    assert resp.status_code == 401
+
+
+def test_api_variant_detail_404_when_not_assembled(client):
+    posting_id = _seed_scored_posting(client)
+    resp = client.get(f"/api/postings/{posting_id}/variant", auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 404
+
+
+def test_api_variant_detail_restores_sections_and_fresh_signed_url(client, fake_db):
+    posting_id = _seed_scored_posting(client)
+    client.post(f"/api/postings/{posting_id}/assemble", json={}, auth=(DASH_USER, DASH_PASS))
+    resp = client.get(f"/api/postings/{posting_id}/variant", auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["kind"] == "engineer"
+    assert body["sections"][0]["order"][0]["ref"] == "BL-001"
+    assert body["signed_url"].startswith("https://")
+
+
+# ---- outreach ----
+
+
+def test_api_outreach_requires_auth(client):
+    resp = client.post("/api/postings/1/outreach", json={})
+    assert resp.status_code == 401
+
+
+def test_api_outreach_requires_target_name(client):
+    posting_id = _seed_scored_posting(client)
+    resp = client.post(f"/api/postings/{posting_id}/outreach", json={}, auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 400
+
+
+def test_api_outreach_happy_path(client, fake_db):
+    posting_id = _seed_scored_posting(client)
+    resp = client.post(
+        f"/api/postings/{posting_id}/outreach",
+        json={"target_name": "Jane Doe", "target_title": "VP Eng"},
+        auth=(DASH_USER, DASH_PASS),
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["target_name"] == "Jane Doe"
+    assert body["draft_linkedin_note"]
+    assert body["draft_email_subject"]
+
+
+def test_api_outreach_blocks_unverified_metric_with_422(client, fake_db):
+    posting_id = _seed_scored_posting(client)
+    fake_db.get_bullets_full = lambda: [{
+        "id": 1, "ref": "BL-001", "text": "Sample bullet.", "source_org": "BEAM LEGACY GROUP",
+        "source_period": "2025-Present", "tags": ["automation"], "variants": ["engineer"],
+        "provenance": "measured", "status": "draft",
+    }]
+    resp = client.post(
+        f"/api/postings/{posting_id}/outreach", json={"target_name": "Jane Doe"},
+        auth=(DASH_USER, DASH_PASS),
+    )
+    assert resp.status_code == 422
+
+
+def test_api_outreach_sent_requires_auth(client):
+    resp = client.post("/api/postings/1/outreach/sent", json={})
+    assert resp.status_code == 401
+
+
+def test_api_outreach_sent_404_when_no_outreach_row(client):
+    posting_id = _seed_scored_posting(client)
+    resp = client.post(
+        f"/api/postings/{posting_id}/outreach/sent", json={}, auth=(DASH_USER, DASH_PASS)
+    )
+    assert resp.status_code == 404
+
+
+def test_api_outreach_sent_marks_sent(client, fake_db):
+    posting_id = _seed_scored_posting(client)
+    client.post(
+        f"/api/postings/{posting_id}/outreach", json={"target_name": "Jane Doe"},
+        auth=(DASH_USER, DASH_PASS),
+    )
+    resp = client.post(
+        f"/api/postings/{posting_id}/outreach/sent", json={"channel": "email"},
+        auth=(DASH_USER, DASH_PASS),
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["sent_channel"] == "email"
+    assert body["sent_at"]
+
+
+def test_api_postings_reflects_approved_stage_and_outreach_after_assembly(client, fake_db):
+    posting_id = _seed_scored_posting(client)
+    client.post(f"/api/postings/{posting_id}/assemble", json={}, auth=(DASH_USER, DASH_PASS))
+    client.post(
+        f"/api/postings/{posting_id}/outreach", json={"target_name": "Jane Doe"},
+        auth=(DASH_USER, DASH_PASS),
+    )
+    resp = client.get("/api/postings", auth=(DASH_USER, DASH_PASS))
+    p = resp.json()[0]
+    assert p["stage"] == "approved"
+    assert p["app"]["file"]
+    assert p["o"]["name"] == "Jane Doe"
+    assert p["o"]["note"]

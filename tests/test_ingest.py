@@ -11,6 +11,9 @@ class FakeDB:
         self.postings: dict[str, dict[str, Any]] = {}
         self.events: list[dict[str, Any]] = []
         self.scores: list[dict[str, Any]] = []
+        self.variants: list[dict[str, Any]] = []
+        self.outreach: list[dict[str, Any]] = []
+        self.uploaded_documents: list[tuple[str, str, bytes]] = []
         self._settings = {
             "red_flag_phrases": red_flag_phrases or [],
             "queue_min_score": queue_min_score,
@@ -70,7 +73,12 @@ class FakeDB:
             if row.get("status") != "scored":
                 continue
             matching_scores = [s for s in self.scores if s.get("posting_id") == row["id"]]
-            result.append({**row, "companies": {"name": "Fake Co"}, "scores": matching_scores})
+            matching_variants = [v for v in self.variants if v.get("posting_id") == row["id"]]
+            matching_outreach = [o for o in self.outreach if o.get("posting_id") == row["id"]]
+            result.append({
+                **row, "companies": {"name": "Fake Co"}, "scores": matching_scores,
+                "variants": matching_variants, "outreach": matching_outreach,
+            })
         return result
 
     def insert_score(self, score: dict[str, Any]) -> dict[str, Any]:
@@ -86,7 +94,12 @@ class FakeDB:
         for row in self.postings.values():
             if row["id"] == posting_id:
                 matching_scores = [s for s in self.scores if s.get("posting_id") == posting_id]
-                return {**row, "companies": {"name": "Fake Co"}, "scores": matching_scores}
+                matching_variants = [v for v in self.variants if v.get("posting_id") == posting_id]
+                matching_outreach = [o for o in self.outreach if o.get("posting_id") == posting_id]
+                return {
+                    **row, "companies": {"name": "Fake Co"}, "scores": matching_scores,
+                    "variants": matching_variants, "outreach": matching_outreach,
+                }
         raise LookupError(f"posting {posting_id} not found")
 
     def get_bullets_full(self) -> list[dict[str, Any]]:
@@ -97,16 +110,34 @@ class FakeDB:
         }]
 
     def upload_document(self, bucket: str, path: str, content: bytes) -> None:
-        self.uploaded_documents = getattr(self, "uploaded_documents", [])
         self.uploaded_documents.append((bucket, path, content))
 
     def create_signed_url(self, bucket: str, path: str, expires_in: int = 3600) -> str:
         return f"https://example.supabase.co/storage/v1/object/sign/{bucket}/{path}?token=fake"
 
     def insert_variant(self, fields: dict[str, Any]) -> dict[str, Any]:
-        self.variants = getattr(self, "variants", [])
         row = {**fields, "id": len(self.variants) + 1}
         self.variants.append(row)
+        return row
+
+    def upsert_outreach(self, fields: dict[str, Any]) -> dict[str, Any]:
+        existing = next(
+            (o for o in self.outreach if o.get("posting_id") == fields.get("posting_id")), None
+        )
+        if existing:
+            existing.update(fields)
+            return existing
+        row = {**fields, "id": len(self.outreach) + 1}
+        self.outreach.append(row)
+        return row
+
+    def mark_outreach_sent(self, posting_id: int, channel: str) -> dict[str, Any]:
+        row = next((o for o in self.outreach if o.get("posting_id") == posting_id), None)
+        if row is None:
+            raise LookupError(f"no outreach row for posting {posting_id}")
+        row["sent_at"] = "2026-08-03T12:00:00+00:00"
+        row["sent_channel"] = channel
+        row["follow_up_due"] = "2026-08-10"
         return row
 
 
@@ -124,6 +155,15 @@ class FakeAnthropic:
     def structured_call(self, **kwargs):
         if kwargs.get("tool_name") == "submit_brief":
             return {"brief": "Lead with the production system."}, 0.004
+        if kwargs.get("tool_name") == "submit_drafts":
+            return {
+                "note": "Saw your team is scaling fast. I build production AI automation. Worth a chat?",
+                "message": "Hi there,\n\nSaw the posting — impressive growth. I build automation "
+                            "systems end to end.\n\nWorth 15 minutes?\n\nJames",
+                "subject": "Question about your automation roadmap",
+                "email": "Hi there,\n\nSaw the posting mentions scaling fast. I build this kind of "
+                         "system.\n\nWorth a 15-minute conversation?\n\nJames",
+            }, 0.006
         result = {
             "dimensions": self.dimensions,
             "total": sum(self.dimensions.values()),

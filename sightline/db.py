@@ -150,7 +150,10 @@ class SightlineDB:
     def get_posting(self, posting_id: int) -> dict[str, Any]:
         resp = self._client.get(
             "/postings",
-            params={"id": f"eq.{posting_id}", "select": "*,companies(id,name),scores(*)"},
+            params={
+                "id": f"eq.{posting_id}",
+                "select": "*,companies(id,name),scores(*),variants(*),outreach(*)",
+            },
         )
         resp.raise_for_status()
         rows = resp.json()
@@ -193,14 +196,45 @@ class SightlineDB:
     def list_scored_postings(self) -> list[dict[str, Any]]:
         """Postings that survived scoring — status='scored' means total already
         cleared queue_min_score (anything lower was archived at ingest time).
-        Embeds company and score in one PostgREST call rather than N+1 queries."""
+        Embeds company, score, variant (if assembled), and outreach (if
+        drafted) in one PostgREST call rather than N+1 queries."""
         resp = self._client.get(
             "/postings",
             params={
                 "status": "eq.scored",
-                "select": "*,companies(id,name),scores(*)",
+                "select": "*,companies(id,name),scores(*),variants(*),outreach(*)",
                 "order": "first_seen_at.desc",
             },
         )
         resp.raise_for_status()
         return resp.json()
+
+    def upsert_outreach(self, fields: dict[str, Any]) -> dict[str, Any]:
+        resp = self._client.post(
+            "/outreach",
+            params={"on_conflict": "posting_id"},
+            headers={"Prefer": "resolution=merge-duplicates,return=representation"},
+            json=fields,
+        )
+        resp.raise_for_status()
+        return resp.json()[0]
+
+    def mark_outreach_sent(self, posting_id: int, channel: str) -> dict[str, Any]:
+        import datetime as _dt
+
+        follow_up_due = (_dt.date.today() + _dt.timedelta(days=7)).isoformat()
+        resp = self._client.patch(
+            "/outreach",
+            params={"posting_id": f"eq.{posting_id}"},
+            headers={"Prefer": "return=representation"},
+            json={
+                "sent_at": _dt.datetime.now(_dt.timezone.utc).isoformat(),
+                "sent_channel": channel,
+                "follow_up_due": follow_up_due,
+            },
+        )
+        resp.raise_for_status()
+        rows = resp.json()
+        if not rows:
+            raise LookupError(f"no outreach row for posting {posting_id}")
+        return rows[0]

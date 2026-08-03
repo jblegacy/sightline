@@ -472,15 +472,35 @@ def assemble(
         },
     )
     signed_url = db.create_signed_url(STORAGE_BUCKET, path)
-    return {
-        **variant_row,
-        "signed_url": signed_url,
-        "sections": [
-            {
-                "org": sec["org"],
-                "order": [{"ref": b["ref"], "text": b["text"]} for b in sec["order"]],
-                "dropped": [{"ref": b["ref"], "text": b["text"]} for b in sec["dropped"]],
-            }
-            for sec in sections
-        ],
-    }
+    return {**variant_row, "signed_url": signed_url, "sections": _serialize_sections(sections)}
+
+
+def _serialize_sections(sections: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "org": sec["org"],
+            "order": [{"ref": b["ref"], "text": b["text"]} for b in sec["order"]],
+            "dropped": [{"ref": b["ref"], "text": b["text"]} for b in sec["dropped"]],
+        }
+        for sec in sections
+    ]
+
+
+def variant_detail(db: SightlineDB, posting_id: int) -> dict[str, Any]:
+    """Read-only: recomputes the same selection view (pure, free) for an
+    already-assembled posting and mints a fresh signed URL. Used to restore
+    the diff view and download link after a page reload without re-running
+    Sonnet or re-uploading a new document — a fresh assemble() would also
+    cost money and create a second Storage object for no reason."""
+    posting = db.get_posting(posting_id)
+    variants = posting.get("variants") or []
+    if not variants:
+        raise LookupError(f"posting {posting_id} has no assembled variant")
+    variant_row = variants[0]
+    scores = posting.get("scores") or []
+    score = scores[0] if scores else {}
+
+    bullets = db.get_bullets_full()
+    sections = select_bullets(bullets, variant_row["kind"], score.get("keywords") or [])
+    signed_url = db.create_signed_url(STORAGE_BUCKET, variant_row["storage_path"])
+    return {**variant_row, "signed_url": signed_url, "sections": _serialize_sections(sections)}
