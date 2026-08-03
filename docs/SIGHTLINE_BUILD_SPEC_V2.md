@@ -222,6 +222,8 @@ create table events (
 
 ## 4. Stage 1 — Ingest (02:00)
 
+See `docs/THEIRSTACK_API_REFERENCE.md` for the full compiled parameter/response reference. It also documents `job.new`/`job.closed` **webhooks** as an alternative to polling — same 1-credit-per-job cost, but zero duplicate-charge risk and near-real-time discovery, at the cost of a public endpoint and the saved search living in TheirStack's app UI rather than in the `settings` table. Worth raising with James once Phase 2 is closer; not decided here.
+
 **Buy this layer, don't build it.** TheirStack aggregates from 315k+ sources including LinkedIn, Indeed, Glassdoor and 16k+ ATS platforms (Greenhouse, Lever, Workable), deduplicates automatically, normalizes salary and location into structured fields, and delivers job descriptions as Markdown. That removes the ATS adapters, the dedupe logic, the HTML parsing, the robots.txt/rate-limit handling, and the salary-extraction problem.
 
 ```
@@ -232,18 +234,23 @@ sources/
 
 **Credit model — this drives every design decision.** 1 credit per job *returned*, and repeat requests for the same job charge again. Two rules follow:
 
-1. **Never fetch the same job twice.** Store the last successful run timestamp and pass it as `discovered_at_gte`. Optionally add `job_id_not` with recently-seen IDs as a second guard. A naive "posted in last 7 days" nightly poll charges ~7x per job.
+1. **Never fetch the same job twice.** Store the **max `discovered_at` among jobs actually returned** in the last successfully processed run — not the run's wall-clock start time — and pass it as `discovered_at_gte`. This makes a failed/partial run safely resumable: you re-fetch only what was discovered after the last job you actually processed, no gap, no double charge. Optionally add `job_id_not` with recently-seen IDs as a second guard. A naive "posted in last 7 days" nightly poll charges ~7x per job.
 2. **Never return a job you'd discard.** Any filtering done in Python is a credit already spent. Push everything server-side.
 
-**Tune with free modes before spending.** `blur_company_data: true` returns blurred results without consuming credits, and there's a documented free count mode. Workflow: build query → count for free → adjust breadth until daily volume ≈ 40–50 → run live.
+**Tune with free modes before spending.** `blur_company_data: true` returns blurred results without consuming credits. Free count is `limit: 1` **plus** `include_total_results: true`, which returns `metadata.total_results` — `limit: 1` alone is not documented as free on its own, so implement both together. `include_total_results: true` reportedly reads the whole matching dataset and slows the response noticeably; enable it only on the first page of any paginated call, not on every page. Workflow: build query → count for free → adjust breadth until daily volume ≈ 40–50 → run live.
+
+Verify the free-count claim empirically before building the Preview feature on it: call the credit-balance endpoint, run the count, call balance again — it must be unchanged. Requires a live account; not yet done (see R1 in the handoff).
 
 **One query, not many.** Separate queries with overlapping title lists double-charge for jobs matching both ("ai engineer" + "automation engineer" both match "AI Automation Engineer"). Use one query with an OR'd title array. Split only when filters genuinely differ, and keep title lists disjoint.
+
+**Request constraint — read before building the client:** TheirStack requires at least one of `posted_at_max_age_days`, `posted_at_gte`, `posted_at_lte`, `company_domain_or`, `company_linkedin_url_or`, or `company_name_or` on every Job Search call; `discovered_at_gte` alone does not satisfy it and the request will fail validation. Pair `discovered_at_gte` with `posted_at_max_age_days` below.
 
 **Baseline payload:**
 
 ```json
 {
-  "discovered_at_gte": "<last successful run, ISO8601 UTC>",
+  "posted_at_max_age_days": 30,
+  "discovered_at_gte": "<max discovered_at from last processed run, ISO8601 UTC>",
   "remote": true,
   "job_country_code_or": ["US"],
   "is_closed": false,
