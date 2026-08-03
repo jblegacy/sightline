@@ -103,6 +103,7 @@ def posting_row_to_p(row: dict[str, Any], co_count: int) -> dict[str, Any] | Non
         ],
         "tt": score.get("target_titles") or [],
         "sig": score.get("company_signals") or [],
+        "ci": score.get("coding_interview_signals") or [],
     }
 
 
@@ -121,14 +122,27 @@ def postings_to_dashboard_p(rows: list[dict[str, Any]], score_threshold: int) ->
     return result
 
 
+def search_profiles_to_dashboard(profiles: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """search_profiles rows -> the shape the dashboard's profile selector
+    reads (was a hardcoded PROFILES object in the prototype; now real data
+    per CLAUDE.md's "two search profiles are data, not code")."""
+    return [
+        {
+            "id": p["id"],
+            "label": p["label"],
+            "inc": p.get("title_include") or [],
+            "exc": p.get("title_exclude") or [],
+            "variant": p["resume_variant"],
+            "budgetShare": p["budget_share"],
+        }
+        for p in profiles
+    ]
+
+
 def settings_to_cfg_qv(settings: dict[str, Any]) -> dict[str, Any]:
-    """Matches the prototype's separate CFG (fetch criteria) and QV (queue
-    filter) objects."""
+    """Matches the prototype's QV (queue filter) object. Fetch-criteria title
+    lists moved to search_profiles — see search_profiles_to_dashboard."""
     return {
-        "cfg": {
-            "inc": settings.get("title_include") or [],
-            "exc": settings.get("title_exclude") or [],
-        },
         "qv": {
             "salMin": settings.get("queue_salary_min", 0),
             "salMax": settings.get("queue_salary_max", 500000),

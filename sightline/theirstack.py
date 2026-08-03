@@ -43,8 +43,11 @@ def _require_dedup_filter(filters: dict[str, Any]) -> None:
         )
 
 
-def build_filters_from_settings(settings: dict[str, Any]) -> dict[str, Any]:
-    """Map a `settings` table row to the TheirStack filter body.
+def build_filters_for_profile(profile: dict[str, Any], settings: dict[str, Any]) -> dict[str, Any]:
+    """Map a `search_profiles` row's title lists plus the shared `settings`
+    row to a TheirStack filter body. See CLAUDE.md "Two search profiles" —
+    each profile has its own title_include/title_exclude; scope, salary, and
+    seniority stay shared across both.
 
     No salary filter by default — deliberately. See CLAUDE.md: a fetch-time
     salary filter drops every posting with no published band, which is most
@@ -57,8 +60,8 @@ def build_filters_from_settings(settings: dict[str, Any]) -> dict[str, Any]:
         "job_country_code_or": settings.get("countries") or ["US"],
         "company_type": "direct_employer" if settings.get("direct_employer", True) else "all",
         "employment_statuses_or": settings.get("employment_types") or ["full_time", "contract"],
-        "job_title_or": settings["title_include"],
-        "job_title_not": settings.get("title_exclude") or [],
+        "job_title_or": profile["title_include"],
+        "job_title_not": profile.get("title_exclude") or [],
         "min_employee_count_or_null": settings.get("min_employee_count", 50),
         "limit": 100,
     }
@@ -153,13 +156,15 @@ class TheirStackClient:
         resp.raise_for_status()
         return resp.json()
 
-    def find_webhook(self, url: str) -> dict[str, Any] | None:
-        """WebhookResponseV0 has no `name` field — match on `url` instead,
-        verified against the live OpenAPI spec."""
+    def find_webhook_for_search(self, search_id: int) -> dict[str, Any] | None:
+        """Matches by search_id, not url. Two search profiles' webhooks share
+        the same delivery URL (one FastAPI endpoint handles both), so url
+        alone can no longer disambiguate which webhook belongs to which
+        saved search — search_id is the real unique key here."""
         resp = self._client.get("/v0/webhooks")
         resp.raise_for_status()
         for w in resp.json():
-            if w.get("url") == url:
+            if w.get("search_id") == search_id:
                 return w
         return None
 
@@ -183,7 +188,7 @@ class TheirStackClient:
         historical match too — that's the 28,624-job backlog, don't do it
         without deliberately tranching it first.
         """
-        existing = self.find_webhook(url)
+        existing = self.find_webhook_for_search(saved_search_id)
         body: dict[str, Any] = {
             "url": url,
             "search_id": saved_search_id,

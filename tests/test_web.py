@@ -185,12 +185,17 @@ def test_api_settings_requires_auth(client):
     assert resp.status_code == 401
 
 
-def test_api_settings_returns_cfg_qv_shape(client):
+def test_api_settings_returns_qv_and_profiles_shape(client):
     resp = client.get("/api/settings", auth=(DASH_USER, DASH_PASS))
     assert resp.status_code == 200
     body = resp.json()
-    assert "cfg" in body and "qv" in body and "scoreThreshold" in body
+    assert "qv" in body and "scoreThreshold" in body
     assert "raw" in body  # full row, for populating every Criteria-tab field
+    assert "cfg" not in body  # title lists live on profiles now
+    profile_ids = {p["id"] for p in body["profiles"]}
+    assert profile_ids == {"automation", "cpg"}
+    automation = next(p for p in body["profiles"] if p["id"] == "automation")
+    assert automation["inc"] and automation["variant"] == "engineer"
 
 
 # ---- settings write + preview + credits ----
@@ -208,14 +213,38 @@ def test_api_settings_patch_persists_and_returns_updated(client, fake_db):
     assert fake_db.get_settings()["queue_min_score"] == 60
 
 
-def test_api_settings_patch_fetch_field_syncs_theirstack(client):
+def test_api_settings_patch_shared_field_syncs_theirstack(client):
     resp = client.patch(
-        "/api/settings", json={"title_include": ["ai engineer"]}, auth=(DASH_USER, DASH_PASS)
+        "/api/settings", json={"remote_only": True}, auth=(DASH_USER, DASH_PASS)
     )
     assert resp.status_code == 200
     # can't inspect the FakeTheirStack instance directly here (it's constructed
     # fresh per-request via the dependency override lambda), but a 200 with no
-    # exception confirms upsert_saved_search was reachable and didn't raise
+    # exception confirms upsert_saved_search was reachable (for both profiles)
+    # and didn't raise
+
+
+def test_api_search_profile_patch_requires_auth(client):
+    resp = client.patch("/api/search-profiles/automation", json={})
+    assert resp.status_code == 401
+
+
+def test_api_search_profile_patch_updates_title_lists(client, fake_db):
+    resp = client.patch(
+        "/api/search-profiles/automation", json={"title_include": ["business systems analyst"]},
+        auth=(DASH_USER, DASH_PASS),
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["id"] == "automation"
+    assert body["inc"] == ["business systems analyst"]
+
+
+def test_api_search_profile_patch_unknown_profile_404s(client):
+    resp = client.patch(
+        "/api/search-profiles/nonexistent", json={"title_include": []}, auth=(DASH_USER, DASH_PASS)
+    )
+    assert resp.status_code == 404
 
 
 def test_api_preview_requires_auth(client):
@@ -224,12 +253,24 @@ def test_api_preview_requires_auth(client):
 
 
 def test_api_preview_returns_real_shape(client):
-    resp = client.post("/api/preview", json={"title_include": ["ai engineer"]}, auth=(DASH_USER, DASH_PASS))
+    resp = client.post("/api/preview", json={"profile_id": "automation"}, auth=(DASH_USER, DASH_PASS))
     assert resp.status_code == 200
     body = resp.json()
     assert set(body.keys()) == {"day", "week", "backlog", "sample"}
     assert body["week"] == 42
     assert body["day"] == 6.0  # 42/7, FakeTheirStack.free_count always returns 42
+
+
+def test_api_preview_defaults_to_automation_profile(client):
+    resp = client.post("/api/preview", json={}, auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 200
+
+
+def test_api_preview_unknown_profile_400s(client):
+    resp = client.post(
+        "/api/preview", json={"profile_id": "nonexistent"}, auth=(DASH_USER, DASH_PASS)
+    )
+    assert resp.status_code == 400
 
 
 def test_api_credits_requires_auth(client):

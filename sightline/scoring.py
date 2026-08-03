@@ -45,6 +45,15 @@ Only flag HARD requirements as knockouts — required years of experience, requi
 required credential, mandatory onsite days. Do NOT flag "preferred" or "nice to have" language; \
 flagging soft preferences destroys the signal this field is supposed to carry.
 
+The candidate is an operations leader who builds with AI agents — not a software engineer, no \
+CS background. Title alone is unreliable in both directions: some "engineer"-titled roles are \
+configuration and solutions work, and some "analyst" roles are real software-engineering jobs. \
+Read the JD itself and set `coding_interview_signals` to the exact phrases that indicate a \
+coding interview or CS-fundamentals screen — "data structures", "system design interview", \
+"CS degree required", "production code", "on-call", "code review", and similar. Empty array if \
+none present. This is separate from `knockouts` — it's a pattern to flag for judgment, not a \
+stated hard requirement.
+
 `matched_bullet_refs` must only contain refs that appear in the provided bullet library — \
 never invent a ref. Pick bullets whose tags or content plausibly overlap this posting's \
 requirements; this is for keyword-matching guidance only, not a final selection.
@@ -73,6 +82,7 @@ INPUT_SCHEMA: dict[str, Any] = {
         "matched_bullet_refs": {"type": "array", "items": {"type": "string"}},
         "unmet_requirements": {"type": "array", "items": {"type": "string"}},
         "knockouts": {"type": "array", "items": {"type": "string"}},
+        "coding_interview_signals": {"type": "array", "items": {"type": "string"}},
         "suggested_variant": {"type": "string", "enum": ["engineer", "leadership"]},
         "reports_to": {"type": "string", "description": "Verbatim if stated; empty string if not stated in the posting."},
         "named_contacts": {
@@ -92,8 +102,8 @@ INPUT_SCHEMA: dict[str, Any] = {
     },
     "required": [
         "dimensions", "total", "rationale", "keywords", "matched_bullet_refs",
-        "unmet_requirements", "knockouts", "suggested_variant", "reports_to",
-        "named_contacts", "target_titles", "company_signals",
+        "unmet_requirements", "knockouts", "coding_interview_signals", "suggested_variant",
+        "reports_to", "named_contacts", "target_titles", "company_signals",
     ],
 }
 
@@ -158,6 +168,7 @@ def score_posting(
         "matched_bullet_ids": result["matched_bullet_refs"],
         "unmet_requirements": result["unmet_requirements"],
         "knockouts": result["knockouts"],
+        "coding_interview_signals": result["coding_interview_signals"],
         "suggested_variant": result["suggested_variant"],
         "reports_to": result["reports_to"] or None,
         "named_contacts": result["named_contacts"],

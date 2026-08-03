@@ -114,6 +114,24 @@ class SightlineDB:
             raise LookupError("settings row (id=1) not found — run the Phase 0 migration")
         return rows[0]
 
+    def get_search_profiles(self) -> list[dict[str, Any]]:
+        resp = self._client.get(
+            "/search_profiles", params={"select": "*", "active": "eq.true", "order": "id"}
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def update_search_profile(self, profile_id: str, fields: dict[str, Any]) -> dict[str, Any]:
+        resp = self._client.patch(
+            "/search_profiles", params={"id": f"eq.{profile_id}"},
+            headers={"Prefer": "return=representation"}, json=fields,
+        )
+        resp.raise_for_status()
+        rows = resp.json()
+        if not rows:
+            raise LookupError(f"search profile {profile_id!r} not found")
+        return rows[0]
+
     def get_bullets(self) -> list[dict[str, Any]]:
         """All bullets regardless of status — scoring is keyword-matching
         guidance, not a document build, so it isn't gated by the provenance

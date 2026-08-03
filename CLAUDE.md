@@ -63,6 +63,31 @@ This exists because a resume bullet once described a system as built when it had
 
 `prototype/sightline-dashboard.html` defines the exact shape the API must return. The `P` array is the posting contract; `LIB` is the bullet-library contract. When wiring real endpoints, match those shapes rather than inventing new ones — the frontend is already built against them.
 
+## Target role shape — this drives the title query
+
+James is an operations leader who builds with AI agents. He is **not** a software engineer and has no CS background. Titles containing "engineer" at tech companies typically screen for CS fundamentals and a coding interview — he gets rejected or fails the technical.
+
+Target: process/workflow/systems roles where the deliverable is a configured, working system — business systems analyst, solutions/implementation consultant, RevOps and BizOps, automation specialist, AI enablement and adoption, AI integration analyst, process improvement.
+
+Exclude aggressively: software engineer, backend, frontend, full stack, ML engineer, data engineer, devops, SRE, platform engineer, AI engineer, staff/principal engineer.
+
+**But title alone is unreliable.** Some "engineer"-titled roles are configuration and solutions work, and some "analyst" roles are real SWE jobs. The scorer must read the JD and flag coding-interview signals — "data structures", "system design interview", "CS degree required", "production code", "on-call", "code review" — as a distinct flag in the queue, separate from knockouts.
+
+## Two search profiles
+
+The pipeline runs **two search profiles**, not one query. Each maps to a resume variant and a share of the credit budget, stored in `search_profiles` (data, not code — same principle as `settings`).
+
+| Profile | Targets | Resume variant | Budget |
+|---|---|---|---|
+| `automation` | workflow automation, business systems analyst, AI enablement/operations/adoption, automation specialist, solutions & implementation consultant, process improvement, AI integration analyst, no-code developer | engineer (Workflow Automation) | ~60% |
+| `cpg` | director/head of operations, operations manager, supply chain, demand planning, S&OP, inventory planning, ecommerce/DTC/fulfillment operations, logistics, category manager, sales ops, revenue ops, chief of staff, commercialization, procurement, planning | leadership (Operations Leadership) | ~40% |
+
+**Title lists must stay disjoint.** Unlike a nightly poll, our ingest is webhook-driven — there's no "run A first, feed its IDs to B as `job_id_not`" sequencing possible, since both profiles' saved searches fire independently. Disjoint title curation is the *only* protection against a posting matching both profiles and being delivered — and charged — twice. Treat any overlap you find as a bug.
+
+Profile-specific exclusions matter: `cpg` must exclude plant-floor and field roles (warehouse associate, forklift, production supervisor, line lead, machine operator, quality technician, maintenance, driver, merchandiser, sanitation) — these flood CPG title searches and are never remote.
+
+Expect the remote filter to cut CPG results hard; much of CPG operations is site-based. A thin `cpg` queue is the market, not a bug.
+
 ## Filtering vs flagging — important
 
 The deterministic filter **archives** only: not remote, location-restricted outside the user's region, expired postings.

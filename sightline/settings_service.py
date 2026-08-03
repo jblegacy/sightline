@@ -1,33 +1,55 @@
-"""Settings persistence, and keeping TheirStack's saved search in sync.
+"""Settings persistence, and keeping both TheirStack search profiles in sync.
 
-See CLAUDE.md: settings are data, not code — the app pushes fetch-criteria
-changes to TheirStack via API rather than requiring manual reconfiguration
-in their app UI.
+See CLAUDE.md: settings — and now search_profiles — are data, not code. The
+app pushes fetch-criteria changes to TheirStack via API rather than
+requiring manual reconfiguration in their app UI.
 """
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
-from sightline.budget import SAVED_SEARCH_NAME
+from sightline.budget import saved_search_name
 from sightline.db import SightlineDB
-from sightline.theirstack import TheirStackClient, build_filters_from_settings
+from sightline.theirstack import TheirStackClient, build_filters_for_profile
 
-# Fields that affect what TheirStack actually sends us. Changing any of these
-# without re-syncing the saved search would mean the dashboard shows a
-# setting that isn't being enforced upstream — a silent lie.
-FETCH_CRITERIA_FIELDS = frozenset({
-    "title_include", "title_exclude", "remote_only", "open_only",
-    "direct_employer", "countries", "min_employee_count", "employment_types",
+# Shared fields that affect what BOTH search profiles fetch from TheirStack.
+# Changing any of these without re-syncing both saved searches would mean
+# the dashboard shows a setting that isn't being enforced upstream — a
+# silent lie. Title lists live on search_profiles now, not here — see
+# update_search_profile.
+SHARED_FETCH_CRITERIA_FIELDS = frozenset({
+    "remote_only", "open_only", "direct_employer", "countries",
+    "min_employee_count", "employment_types", "seniority", "source_exclude",
+    "fetch_salary_filter", "fetch_salary_min", "fetch_salary_max",
 })
+
+
+def _sync_all_profiles(db: SightlineDB, theirstack: TheirStackClient, settings: dict[str, Any]) -> None:
+    for profile in db.get_search_profiles():
+        theirstack.upsert_saved_search(
+            saved_search_name(profile["id"]), build_filters_for_profile(profile, settings)
+        )
 
 
 def update_settings(
     db: SightlineDB, theirstack: TheirStackClient, fields: dict[str, Any]
 ) -> dict[str, Any]:
     updated = db.update_settings(fields)
-    if FETCH_CRITERIA_FIELDS & fields.keys():
-        theirstack.upsert_saved_search(SAVED_SEARCH_NAME, build_filters_from_settings(updated))
+    if SHARED_FETCH_CRITERIA_FIELDS & fields.keys():
+        _sync_all_profiles(db, theirstack, updated)
+    return updated
+
+
+def update_search_profile(
+    db: SightlineDB, theirstack: TheirStackClient, profile_id: str, fields: dict[str, Any]
+) -> dict[str, Any]:
+    updated = db.update_search_profile(profile_id, fields)
+    if {"title_include", "title_exclude"} & fields.keys():
+        settings = db.get_settings()
+        theirstack.upsert_saved_search(
+            saved_search_name(profile_id), build_filters_for_profile(updated, settings)
+        )
     return updated
 
 
