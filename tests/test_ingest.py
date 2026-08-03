@@ -82,6 +82,33 @@ class FakeDB:
         self._settings.update(fields)
         return self._settings
 
+    def get_posting(self, posting_id: int) -> dict[str, Any]:
+        for row in self.postings.values():
+            if row["id"] == posting_id:
+                matching_scores = [s for s in self.scores if s.get("posting_id") == posting_id]
+                return {**row, "companies": {"name": "Fake Co"}, "scores": matching_scores}
+        raise LookupError(f"posting {posting_id} not found")
+
+    def get_bullets_full(self) -> list[dict[str, Any]]:
+        return [{
+            "id": 1, "ref": "BL-001", "text": "Sample bullet.", "source_org": "BEAM LEGACY GROUP",
+            "source_period": "2025-Present", "tags": ["automation"], "variants": ["engineer"],
+            "provenance": "measured", "status": "verified",
+        }]
+
+    def upload_document(self, bucket: str, path: str, content: bytes) -> None:
+        self.uploaded_documents = getattr(self, "uploaded_documents", [])
+        self.uploaded_documents.append((bucket, path, content))
+
+    def create_signed_url(self, bucket: str, path: str, expires_in: int = 3600) -> str:
+        return f"https://example.supabase.co/storage/v1/object/sign/{bucket}/{path}?token=fake"
+
+    def insert_variant(self, fields: dict[str, Any]) -> dict[str, Any]:
+        self.variants = getattr(self, "variants", [])
+        row = {**fields, "id": len(self.variants) + 1}
+        self.variants.append(row)
+        return row
+
 
 class FakeAnthropic:
     """Stand-in for AnthropicClient — score_posting only calls structured_call.
@@ -95,6 +122,8 @@ class FakeAnthropic:
         }
 
     def structured_call(self, **kwargs):
+        if kwargs.get("tool_name") == "submit_brief":
+            return {"brief": "Lead with the production system."}, 0.004
         result = {
             "dimensions": self.dimensions,
             "total": sum(self.dimensions.values()),

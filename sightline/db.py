@@ -12,6 +12,7 @@ from sightline.config import Settings
 
 class SightlineDB:
     def __init__(self, settings: Settings, client: httpx.Client | None = None) -> None:
+        self._storage_origin = settings.supabase_url
         self._client = client or httpx.Client(
             base_url=f"{settings.supabase_url}/rest/v1",
             headers={
@@ -131,6 +132,63 @@ class SightlineDB:
         )
         resp.raise_for_status()
         return resp.json()[0]
+
+    def get_bullets_full(self) -> list[dict[str, Any]]:
+        """Full bullet rows for assembly — includes provenance/status (what
+        the validator gates on) and source_org/source_period (for grouping
+        into resume sections), unlike get_bullets() which is scoring-context
+        only."""
+        resp = self._client.get(
+            "/bullets",
+            params={
+                "select": "id,ref,text,source_org,source_period,tags,variants,provenance,status"
+            },
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def get_posting(self, posting_id: int) -> dict[str, Any]:
+        resp = self._client.get(
+            "/postings",
+            params={"id": f"eq.{posting_id}", "select": "*,companies(id,name),scores(*)"},
+        )
+        resp.raise_for_status()
+        rows = resp.json()
+        if not rows:
+            raise LookupError(f"posting {posting_id} not found")
+        return rows[0]
+
+    def insert_variant(self, fields: dict[str, Any]) -> dict[str, Any]:
+        resp = self._client.post(
+            "/variants", headers={"Prefer": "return=representation"}, json=fields
+        )
+        resp.raise_for_status()
+        return resp.json()[0]
+
+    def upload_document(self, bucket: str, path: str, content: bytes) -> None:
+        """Storage's REST surface lives at /storage/v1, not /rest/v1 — this
+        client's base_url is PostgREST's, but an absolute path here still
+        resolves against the same Supabase project host."""
+        resp = self._client.post(
+            f"/storage/v1/object/{bucket}/{path}",
+            content=content,
+            headers={
+                "Content-Type": (
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                ),
+                "x-upsert": "true",
+            },
+        )
+        resp.raise_for_status()
+
+    def create_signed_url(self, bucket: str, path: str, expires_in: int = 3600) -> str:
+        """Bucket is private (see CLAUDE.md) — every download goes through a
+        signed, time-limited URL, never a public one."""
+        resp = self._client.post(
+            f"/storage/v1/object/sign/{bucket}/{path}", json={"expiresIn": expires_in}
+        )
+        resp.raise_for_status()
+        return f"{self._storage_origin}{resp.json()['signedURL']}"
 
     def list_scored_postings(self) -> list[dict[str, Any]]:
         """Postings that survived scoring — status='scored' means total already

@@ -423,59 +423,7 @@ table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 <script>
 const DIMS=[['Role fit',25],['Evidence overlap',20],['Seniority & scope',15],['Remote authenticity',15],['Comp signal',15],['Company & stage',10],['Red flags',-30]];
 
-// ---- baseline bullet library (excerpt) ----
-const LIB={
- eng:{summary:{key:'eng-master',text:'Builds and ships AI automation systems end to end \u2014 specification through production. Twelve years of operations experience underneath the technical work. Seeking hands-on build work as an individual contributor rather than people management.'},
-  sections:[
-   {org:'BEAM LEGACY GROUP',b:[
-    {r:'BL-014',t:'Architected and shipped an autonomous forecasting and decision-automation platform running live in production \u2014 68 API endpoints, 540 configurable strategy profiles, ensemble modeling, and automated risk controls with real-time hedging.',g:['production','live system','api design','risk automation','systems architecture']},
-    {r:'BL-015',t:'Built the statistical validation layer that gates production deployment \u2014 no strategy reaches live execution without passing it.',g:['validation','testing','governance','production','risk']},
-    {r:'BL-016',t:'Specify, build, and deploy production-grade platforms as a single operator by directing AI coding agents.',g:['ai agents','autonomy','delivery','prototyping']},
-    {r:'BL-017',t:'Built an AI platform for small-business owners integrating search visibility, automated content production, and a business-intelligence layer unifying accounting, point-of-sale, and CRM data.',g:['integration','internal tools','bi','data','product']},
-    {r:'BL-018',t:'Audited that platform\u2019s scoring engine and remediated 12 defects across three priority tiers before customer release.',g:['qa','validation','debugging','quality']},
-    {r:'BL-019',t:'Built data pipelines processing hundreds of thousands of records: batch classification via LLM APIs, vector embedding, dimensionality reduction, and nearest-neighbor computation.',g:['data pipelines','etl','llm','embeddings','scale']},
-    {r:'BL-020',t:'Reduced inference cost on production workloads through prompt-cache optimization and batch API usage rather than per-request calls.',g:['cost','optimization','llm','efficiency','adoption metrics']}]},
-   {org:'COMARKCO',b:[
-    {r:'BL-021',t:'Standardized and automated recurring finance, logistics, and reporting workflows, cutting manual processing time across multi-country operations.',g:['workflow automation','process automation','efficiency','operations','time saved']},
-    {r:'BL-022',t:'Designed and implemented the operational, financial, and compliance systems supporting revenue growth from $250K to $12M in a single year.',g:['systems','scale','operations','impact']},
-    {r:'BL-023',t:'Integrated finance, e-commerce, and logistics platforms into a single reporting layer, eliminating manual reconciliation between systems.',g:['integration','api','internal tools','data','systems']},
-    {r:'BL-024',t:'Built the reporting and data infrastructure used for inventory planning, cash forecasting, and multi-entity consolidation.',g:['data','bi','forecasting','reporting']}]},
-   {org:'WORKSITE LABS',b:[
-    {r:'BL-025',t:'Product Owner for the digital patient booking platform \u2014 wrote requirements, designed the UX, ran sprint planning through delivery.',g:['product','requirements','delivery','agile']},
-    {r:'BL-026',t:'Designed and implemented the data infrastructure capturing engagement telemetry and built the reporting layer executives used for decisions.',g:['data','telemetry','bi','internal tools']},
-    {r:'BL-027',t:'Built partner onboarding workflows that shortened implementation timelines and standardized data handoffs.',g:['workflow automation','onboarding','process','adoption']}]}]},
- lead:{summary:{key:'lead-master',text:'Operations leader who designs, builds, and ships AI-automated business systems. Combines 12+ years of cross-functional operations leadership with hands-on technical implementation.'},
-  sections:[
-   {org:'BEAM LEGACY GROUP',b:[
-    {r:'BL-014',t:'Architected and launched an autonomous forecasting and decision-automation platform now running live in production \u2014 68 API endpoints, 540 strategy profiles, and automated risk controls.',g:['production','live system','systems architecture','risk automation']},
-    {r:'BL-016',t:'Specify, build, and deploy production-grade platforms as a single operator by directing AI coding agents.',g:['ai agents','autonomy','prototyping','delivery']},
-    {r:'BL-030',t:'Led product design and go-to-market for an AI platform for small-business owners, replacing an estimated $3,700\u2013$9,500/month of agency labor at a $49/month price point.',g:['product','gtm','pricing','adoption','cost']},
-    {r:'BL-031',t:'Owned full product specification, scoring methodology, and pricing architecture.',g:['product','strategy','standards','specification']}]},
-   {org:'COMARKCO',b:[
-    {r:'BL-022',t:'Built the operational, financial, and compliance infrastructure that scaled top-line revenue from $250K to $12M in a single year.',g:['scale','operations','impact','systems']},
-    {r:'BL-032',t:'Secured $3M in working capital, inventory financing, and revolving credit to fund production and market entry.',g:['finance','capital','operations']},
-    {r:'BL-033',t:'Designed and executed international expansion across the Americas, Europe, Asia, and Oceania; established regulatory readiness for 20+ countries.',g:['expansion','compliance','strategy','scale']},
-    {r:'BL-034',t:'Scaled a cross-functional team from lean startup staff to 25 employees, improving retention and accountability.',g:['leadership','team','change management','culture']},
-    {r:'BL-021',t:'Standardized and automated recurring finance, logistics, and reporting workflows across multi-country operations.',g:['workflow automation','process automation','efficiency','time saved']}]},
-   {org:'WORKSITE LABS',b:[
-    {r:'BL-035',t:'Established the Project Management Office, creating governance and prioritization frameworks adopted company-wide.',g:['governance','standards','pmo','change management','adoption']},
-    {r:'BL-025',t:'Product Owner for the digital patient booking platform, owning requirements, UX, and sprint planning.',g:['product','requirements','delivery']},
-    {r:'BL-036',t:'Developed and executed a company-wide customer experience strategy, improving CSAT and NPS and reducing churn.',g:['strategy','adoption','change management','customer']}]}]}};
-
-// selection: score each baseline bullet by tag overlap with the JD keywords
-function selectBullets(p){
-  const base=LIB[p.v], kw=p.kw.map(k=>k.toLowerCase());
-  const hit=g=>g.reduce((n,t)=>n+(kw.some(k=>k.includes(t)||t.includes(k))?1:0),0);
-  return base.sections.map(sec=>{
-    const scored=sec.b.map(b=>({...b,s:hit(b.g)}));
-    const keep=[...scored].sort((a,b)=>b.s-a.s).slice(0,Math.max(3,Math.ceil(sec.b.length*0.7)));
-    const keepRefs=new Set(keep.filter(b=>b.s>0||keep.indexOf(b)<3).map(b=>b.r));
-    return {org:sec.org,
-      order:[...scored].filter(b=>keepRefs.has(b.r)).sort((a,b)=>b.s-a.s),
-      dropped:scored.filter(b=>!keepRefs.has(b.r)),
-      baseline:sec.b};
-  });
-}
+// Bullet selection now happens server-side — see sightline/assembly.py. Approve calls /api/postings/{id}/assemble.
 
 let P=[];
 
@@ -595,35 +543,34 @@ function drawApps(){
       </tr>`}).join('')}</tbody></table>`;
 }
 
+let curDiffId=null;
 function renderDiff(id){
   const p=P.find(x=>x.id===id);
-  const base=LIB[p.v], sel=p.sel||selectBullets(p);
-  const vname=p.v==='eng'?'Engineer':'Leadership';
+  const v=p.variant;
+  if(!v){toast('No resume built for this posting yet');return}
+  curDiffId=id;
+  const vname=v.kind==='leadership'?'Leadership':'Engineer';
   $('#mtitle').textContent=`${p.co} — ${p.ti} · ${vname} variant`;
+  const sel=v.sections||[];
   const kept=sel.reduce((n,s2)=>n+s2.order.length,0), drop=sel.reduce((n,s2)=>n+s2.dropped.length,0);
   $('#mbody').innerHTML=`
    <div class="dlegend">
      <span><i style="background:var(--auto)"></i>Included</span>
-     <span><i style="background:var(--gate)"></i>Promoted \u2014 matched a JD keyword</span>
      <span><i style="background:var(--rule)"></i>Dropped for this application</span>
-     <span class="mono">${kept} bullets in \u00b7 ${drop} out</span>
+     <span class="mono">${kept} bullets in · ${drop} out</span>
    </div>
    <div class="dcols">
-     <div class="dcol"><h4>Baseline \u2014 ${vname} master</h4>
-       <div class="dsec">Summary</div>
-       <div class="summarybox" style="border-left-color:var(--rule)">${esc(base.summary.text)}</div>
+     <div class="dcol"><h4>Baseline — all ${esc(vname)} bullets for these employers</h4>
        ${sel.map(sc=>`<div class="dsec">${esc(sc.org)}</div>`+
-         sc.baseline.map(b=>`<div class="db"><span class="ref">${b.r}</span>${esc(b.t)}</div>`).join('')).join('')}
+         [...sc.order,...sc.dropped].map(b=>`<div class="db"><span class="ref">${esc(b.ref)}</span>${esc(b.text)}</div>`).join('')).join('')}
      </div>
      <div class="dcol new"><h4>Tailored for this posting</h4>
-       <div class="dsec">Summary</div>
-       <div class="summarybox">${esc(base.summary.text)}</div>
        ${sel.map(sc=>`<div class="dsec">${esc(sc.org)}</div>`+
-         sc.order.map(b=>`<div class="db ${b.s>0?'promoted':'kept'}"><span class="ref">${b.r}${b.s>0?' \u00b7 moved up':''}</span>${esc(b.t)}${b.s>0?`<span class="why">matched: ${esc(b.g.filter(g=>p.kw.some(k=>k.toLowerCase().includes(g)||g.includes(k.toLowerCase()))).join(', ')||'keyword overlap')}</span>`:''}</div>`).join('')+
-         sc.dropped.map(b=>`<div class="db dropped"><span class="ref">${b.r} \u00b7 dropped</span>${esc(b.t)}</div>`).join('')).join('')}
+         sc.order.map(b=>`<div class="db kept"><span class="ref">${esc(b.ref)}</span>${esc(b.text)}</div>`).join('')+
+         sc.dropped.map(b=>`<div class="db dropped"><span class="ref">${esc(b.ref)} · dropped</span>${esc(b.text)}</div>`).join('')).join('')}
      </div>
    </div>
-   <p class="hint" style="margin:16px 0 0">Assembly is selection only \u2014 every line above exists verbatim in the approved library. Nothing was rewritten for this posting.</p>`;
+   <p class="hint" style="margin:16px 0 0">Assembly is selection only — every line above exists verbatim in the approved library. Nothing was rewritten for this posting.</p>`;
   $('#mask').classList.add('on');
 }
 
@@ -688,6 +635,35 @@ function renderDrafts(id){
   box._d=d;
 }
 
+async function approvePosting(p){
+  p.stage='approved';
+  p.app={variant:p.v==='eng'?'Engineer':'Leadership',file:null,sent:null,status:'building',due:null,notes:''};
+  p.o={name:'',title:'',url:''};
+  toast('Approved — assembling resume');
+  drawAll();
+  let resp;
+  try{
+    resp=await fetch(`/api/postings/${p.id}/assemble`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+  }catch(e){
+    p.stage='queue';p.app=null;
+    toast('Assembly failed — see console');console.error('assemble failed:',e);
+    drawAll();return;
+  }
+  if(!resp.ok){
+    const err=await resp.json().catch(()=>({detail:'assembly failed'}));
+    p.stage='queue';p.app=null;
+    toast(resp.status===422?`Blocked — ${err.detail}`:`Assembly failed: ${err.detail||resp.status}`);
+    drawAll();return;
+  }
+  const v=await resp.json();
+  p.variant=v;
+  if(v.brief){p.brief=v.brief}
+  p.app.file=(v.storage_path||'').split('/').pop();
+  p.app.status='ready to submit';
+  toast('Resume ready — review before sending');
+  drawAll();
+}
+
 document.addEventListener('click',e=>{
   const tab=e.target.closest('nav button');
   if(tab){document.querySelectorAll('nav button').forEach(b=>b.setAttribute('aria-selected',b===tab));
@@ -698,10 +674,7 @@ document.addEventListener('click',e=>{
   const act=e.target.dataset.act;
   if(act){
     const row=e.target.closest('.row'), p=P.find(x=>x.id==row.dataset.id);
-    if(act==='approve'){p.stage='approved';p.sel=selectBullets(p);
-      p.app={variant:p.v==='eng'?'Engineer':'Leadership',file:null,sent:null,status:'building',due:null,notes:''};
-      p.o={name:'',title:'',url:''};toast('Approved \u2014 assembling resume');
-      setTimeout(()=>{p.app.file=`${p.co.replace(/\W/g,'')}-${p.v}-0730.docx`;p.app.status='ready to submit';drawAll();toast('Resume ready \u2014 review before sending');},1400);}
+    if(act==='approve'){approvePosting(p);}
     if(act==='reject'){const why=prompt('Why is this a no? (feeds rubric calibration)','');
       if(why===null)return; p.stage='rejected';p.rejectWhy=why||'no reason given';
       toast('Rejected \u2014 reason logged for rubric v2');}
@@ -726,7 +699,11 @@ document.addEventListener('click',e=>{
   const df=e.target.dataset.diff;
   if(df){renderDiff(+df);return}
   if(e.target.id==='mclose'||e.target.id==='mask'){$('#mask').classList.remove('on');return}
-  if(e.target.id==='mdl'){toast('Downloading .docx');return}
+  if(e.target.id==='mdl'){
+    const p=P.find(x=>x.id===curDiffId);
+    if(p&&p.variant&&p.variant.signed_url){window.open(p.variant.signed_url,'_blank')}
+    else{toast('No file to download')}
+    return}
 
   const gen=e.target.dataset.gen;
   if(gen){const p=P.find(x=>x.id==gen), card=e.target.closest('.oc');

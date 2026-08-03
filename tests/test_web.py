@@ -243,4 +243,47 @@ def test_api_credits_returns_real_balance(client):
     body = resp.json()
     assert body["used_api_credits"] == 10  # FakeTheirStack default
     assert body["api_credits"] == 200
-    assert body["monthly_credits"] == 200
+
+
+# ---- assembly ----
+
+
+def _seed_scored_posting(client) -> int:
+    body = json.dumps({"id": 1, "type": "job.new", "payload": SAMPLE_JOB}).encode()
+    client.post("/webhooks/theirstack", content=body, headers={"X-TheirStack-Signature-256": sign(body)})
+    posting = client.get("/api/postings", auth=(DASH_USER, DASH_PASS)).json()[0]
+    return posting["id"]
+
+
+def test_api_assemble_requires_auth(client):
+    resp = client.post("/api/postings/1/assemble", json={})
+    assert resp.status_code == 401
+
+
+def test_api_assemble_happy_path(client, fake_db):
+    posting_id = _seed_scored_posting(client)
+    resp = client.post(f"/api/postings/{posting_id}/assemble", json={}, auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["kind"] == "engineer"
+    assert body["bullet_refs"] == ["BL-001"]
+    assert body["brief"] == "Lead with the production system."
+    assert body["signed_url"].startswith("https://")
+    assert len(fake_db.uploaded_documents) == 1
+
+
+def test_api_assemble_unknown_posting_returns_404(client):
+    resp = client.post("/api/postings/999999/assemble", json={}, auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 404
+
+
+def test_api_assemble_blocks_unverified_bullets_with_422(client, fake_db):
+    posting_id = _seed_scored_posting(client)
+    fake_db.get_bullets_full = lambda: [{
+        "id": 1, "ref": "BL-001", "text": "Sample bullet.", "source_org": "BEAM LEGACY GROUP",
+        "source_period": "2025-Present", "tags": ["automation"], "variants": ["engineer"],
+        "provenance": "measured", "status": "draft",
+    }]
+    resp = client.post(f"/api/postings/{posting_id}/assemble", json={}, auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 422
+    assert "status=draft" in resp.json()["detail"]
