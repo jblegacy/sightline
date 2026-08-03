@@ -2,6 +2,8 @@ from typing import Any
 
 from sightline.ingest import handle_webhook_event, job_to_posting
 
+WEBHOOK_URL = "https://example.com/webhooks/theirstack"
+
 
 class FakeDB:
     def __init__(self, red_flag_phrases: list[str] | None = None, queue_min_score: int = 55) -> None:
@@ -9,7 +11,11 @@ class FakeDB:
         self.postings: dict[str, dict[str, Any]] = {}
         self.events: list[dict[str, Any]] = []
         self.scores: list[dict[str, Any]] = []
-        self._settings = {"red_flag_phrases": red_flag_phrases or [], "queue_min_score": queue_min_score}
+        self._settings = {
+            "red_flag_phrases": red_flag_phrases or [],
+            "queue_min_score": queue_min_score,
+            "monthly_credits": 200,
+        }
         self._next_id = 1
 
     def upsert_company(self, name: str, domain: str | None) -> int:
@@ -84,6 +90,38 @@ class FakeAnthropic:
         return result, 0.002
 
 
+class FakeTheirStack:
+    """Stand-in for TheirStackClient — only what check_and_enforce_budget calls.
+    Defaults to well under budget so the circuit breaker never trips in tests
+    that aren't specifically exercising it."""
+
+    def __init__(self, used_api_credits: int = 10) -> None:
+        self.used_api_credits = used_api_credits
+        self.disabled_search = False
+        self.disabled_webhook = False
+
+    def credit_balance(self):
+        return {"api_credits": 200, "used_api_credits": self.used_api_credits}
+
+    def find_saved_search(self, name):
+        return {"id": 1, "is_alert_active": True}
+
+    def find_webhook(self, url):
+        return {"id": 1, "is_active": True}
+
+    def set_saved_search_active(self, search_id, is_active):
+        self.disabled_search = not is_active
+
+    def set_webhook_active(self, webhook_id, is_active):
+        self.disabled_webhook = not is_active
+
+
+def dispatch(db, event, anthropic=None, theirstack=None):
+    return handle_webhook_event(
+        db, anthropic or FakeAnthropic(), theirstack or FakeTheirStack(), WEBHOOK_URL, event
+    )
+
+
 SAMPLE_JOB = {
     "id": 999001,
     "job_title": "AI Automation Engineer",
@@ -126,7 +164,7 @@ def test_job_to_posting_remote_flag_unclear_when_null():
 def test_handle_job_new_upserts_company_and_posting_and_logs_event():
     db = FakeDB()
     event = {"id": 1, "type": "job.new", "payload": SAMPLE_JOB}
-    result = handle_webhook_event(db, FakeAnthropic(), event)
+    result = dispatch(db, event)
     assert result["ok"] is True
     assert "999001" in db.postings
     assert db.events[0]["event"] == "ingested"
@@ -136,33 +174,27 @@ def test_handle_job_new_upserts_company_and_posting_and_logs_event():
 def test_handle_job_new_is_idempotent_on_duplicate_delivery():
     db = FakeDB()
     event = {"id": 1, "type": "job.new", "payload": SAMPLE_JOB}
-    handle_webhook_event(db, FakeAnthropic(), event)
-    handle_webhook_event(db, FakeAnthropic(), event)  # TheirStack docs: duplicates possible in edge cases
+    dispatch(db, event)
+    dispatch(db, event)  # TheirStack docs: duplicates possible in edge cases
     assert len(db.postings) == 1  # one row, not two
 
 
 def test_handle_job_closed_marks_posting_expired():
     db = FakeDB()
-    handle_webhook_event(db, FakeAnthropic(), {"id": 1, "type": "job.new", "payload": SAMPLE_JOB})
-    handle_webhook_event(
-        db, FakeAnthropic(),
-        {"id": 2, "type": "job.closed", "payload": {"id": 999001, "closed_at": "2026-08-10T00:00:00Z"}},
-    )
+    dispatch(db, {"id": 1, "type": "job.new", "payload": SAMPLE_JOB})
+    dispatch(db, {"id": 2, "type": "job.closed", "payload": {"id": 999001, "closed_at": "2026-08-10T00:00:00Z"}})
     assert db.postings["999001"]["status"] == "expired"
 
 
 def test_handle_job_closed_for_unknown_posting_does_not_raise():
     db = FakeDB()
-    result = handle_webhook_event(
-        db, FakeAnthropic(),
-        {"id": 1, "type": "job.closed", "payload": {"id": 424242, "closed_at": "2026-08-10T00:00:00Z"}},
-    )
+    result = dispatch(db, {"id": 1, "type": "job.closed", "payload": {"id": 424242, "closed_at": "2026-08-10T00:00:00Z"}})
     assert result["ok"] is True
 
 
 def test_handle_webhook_event_ignores_unhandled_type():
     db = FakeDB()
-    result = handle_webhook_event(db, FakeAnthropic(), {"id": 1, "type": "company.new", "payload": {}})
+    result = dispatch(db, {"id": 1, "type": "company.new", "payload": {}})
     assert result["ignored"] is True
     assert db.events[-1]["event"] == "unhandled_event_type"
 
@@ -173,7 +205,7 @@ def test_handle_webhook_event_ignores_unhandled_type():
 def test_not_remote_archives_without_scoring():
     db = FakeDB()
     job = {**SAMPLE_JOB, "remote": False}
-    handle_webhook_event(db, FakeAnthropic(), {"id": 1, "type": "job.new", "payload": job})
+    dispatch(db, {"id": 1, "type": "job.new", "payload": job})
     posting = db.postings["999001"]
     assert posting["status"] == "archived"
     assert posting["filter_reason"] == "not remote"
@@ -183,7 +215,7 @@ def test_not_remote_archives_without_scoring():
 def test_red_flag_phrase_archives_without_scoring():
     db = FakeDB(red_flag_phrases=["must have active real estate license"])
     job = {**SAMPLE_JOB, "description": "Must have active real estate license."}
-    handle_webhook_event(db, FakeAnthropic(), {"id": 1, "type": "job.new", "payload": job})
+    dispatch(db, {"id": 1, "type": "job.new", "payload": job})
     posting = db.postings["999001"]
     assert posting["status"] == "archived"
     assert db.scores == []
@@ -191,7 +223,7 @@ def test_red_flag_phrase_archives_without_scoring():
 
 def test_high_score_survives_as_scored():
     db = FakeDB(queue_min_score=55)
-    handle_webhook_event(db, FakeAnthropic(), {"id": 1, "type": "job.new", "payload": SAMPLE_JOB})
+    dispatch(db, {"id": 1, "type": "job.new", "payload": SAMPLE_JOB})
     posting = db.postings["999001"]
     assert posting["status"] == "scored"
     assert len(db.scores) == 1
@@ -207,9 +239,7 @@ def test_low_score_archives_with_reason():
         "remote_authenticity": 5, "comp_signal": 4, "company_stage_fit": 4, "red_flags": 0,
     }
     assert sum(low_dimensions.values()) == 30
-    handle_webhook_event(
-        db, FakeAnthropic(dimensions=low_dimensions), {"id": 1, "type": "job.new", "payload": SAMPLE_JOB}
-    )
+    dispatch(db, {"id": 1, "type": "job.new", "payload": SAMPLE_JOB}, anthropic=FakeAnthropic(dimensions=low_dimensions))
     posting = db.postings["999001"]
     assert posting["status"] == "archived"
     assert "30" in posting["filter_reason"]
@@ -218,7 +248,41 @@ def test_low_score_archives_with_reason():
 
 def test_score_logs_cost_event():
     db = FakeDB()
-    handle_webhook_event(db, FakeAnthropic(), {"id": 1, "type": "job.new", "payload": SAMPLE_JOB})
+    dispatch(db, {"id": 1, "type": "job.new", "payload": SAMPLE_JOB})
     scored_events = [e for e in db.events if e["event"] == "scored"]
     assert len(scored_events) == 1
     assert scored_events[0]["payload"]["cost_usd"] == 0.002
+
+
+# ---- credit circuit breaker wiring ----
+
+
+def test_over_budget_trips_circuit_breaker_after_processing():
+    db = FakeDB()
+    ts = FakeTheirStack(used_api_credits=190)  # >90% of 200
+    dispatch(db, {"id": 1, "type": "job.new", "payload": SAMPLE_JOB}, theirstack=ts)
+    assert ts.disabled_search is True
+    assert ts.disabled_webhook is True
+    # the posting itself still processed normally — the breaker can't undo an
+    # already-spent credit, it only stops future ones
+    assert db.postings["999001"]["status"] in ("scored", "archived")
+
+
+def test_under_budget_does_not_trip_circuit_breaker():
+    db = FakeDB()
+    ts = FakeTheirStack(used_api_credits=10)
+    dispatch(db, {"id": 1, "type": "job.new", "payload": SAMPLE_JOB}, theirstack=ts)
+    assert ts.disabled_search is False
+    assert ts.disabled_webhook is False
+
+
+def test_job_closed_also_checked_against_budget():
+    db = FakeDB()
+    ts = FakeTheirStack(used_api_credits=10)
+    dispatch(db, {"id": 1, "type": "job.new", "payload": SAMPLE_JOB}, theirstack=ts)
+    ts.used_api_credits = 190
+    dispatch(
+        db, {"id": 2, "type": "job.closed", "payload": {"id": 999001, "closed_at": "2026-08-10T00:00:00Z"}},
+        theirstack=ts,
+    )
+    assert ts.disabled_search is True

@@ -189,6 +189,20 @@ class TheirStackClient:
         resp.raise_for_status()
         return resp.json()
 
+    def set_webhook_active(self, webhook_id: int, is_active: bool) -> dict[str, Any]:
+        """Disabling stops delivery, but does NOT discard matches found while
+        disabled — TheirStack's own docs: re-enabling delivers (and charges
+        for) everything that matched in the meantime. Not a full stop on its
+        own; pair with set_saved_search_active to actually stop matching."""
+        resp = self._client.patch(f"/v0/webhooks/{webhook_id}/status", json={"is_active": is_active})
+        resp.raise_for_status()
+        return resp.json()
+
+    def set_saved_search_active(self, search_id: int, is_active: bool) -> dict[str, Any]:
+        resp = self._client.patch(f"/v0/saved_searches/{search_id}", json={"is_alert_active": is_active})
+        resp.raise_for_status()
+        return resp.json()
+
 
 def verify_webhook_signature(payload: bytes, secret: str, signature_header: str | None) -> bool:
     """Verify X-TheirStack-Signature-256. See docs/THEIRSTACK_API_REFERENCE.md.

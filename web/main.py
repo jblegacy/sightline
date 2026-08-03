@@ -12,7 +12,7 @@ from sightline.anthropic_client import AnthropicClient
 from sightline.config import Settings, get_settings
 from sightline.db import SightlineDB
 from sightline.ingest import handle_webhook_event
-from sightline.theirstack import verify_webhook_signature
+from sightline.theirstack import TheirStackClient, verify_webhook_signature
 
 logger = logging.getLogger("sightline.web")
 
@@ -37,6 +37,15 @@ def get_anthropic(settings: Settings = Depends(get_settings)) -> AnthropicClient
     return _anthropic_singleton(settings)
 
 
+@lru_cache
+def _theirstack_singleton(settings: Settings) -> TheirStackClient:
+    return TheirStackClient(api_key=settings.theirstack_api_key)
+
+
+def get_theirstack(settings: Settings = Depends(get_settings)) -> TheirStackClient:
+    return _theirstack_singleton(settings)
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -48,6 +57,7 @@ async def theirstack_webhook(
     settings: Settings = Depends(get_settings),
     db: SightlineDB = Depends(get_db),
     anthropic: AnthropicClient = Depends(get_anthropic),
+    theirstack: TheirStackClient = Depends(get_theirstack),
 ) -> Response:
     if not settings.theirstack_webhook_secret:
         # Fail closed: an unauthenticated public endpoint that writes straight
@@ -70,7 +80,9 @@ async def theirstack_webhook(
     # duplicate deliveries as harmless (upsert-on-external_id is idempotent) —
     # all per docs/THEIRSTACK_API_REFERENCE.md §8's delivery requirements.
     try:
-        result = handle_webhook_event(db, anthropic, event)
+        result = handle_webhook_event(
+            db, anthropic, theirstack, settings.theirstack_webhook_url or "", event
+        )
     except Exception:
         logger.exception(
             "failed to process webhook event id=%s type=%s", event.get("id"), event.get("type")
