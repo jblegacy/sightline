@@ -251,6 +251,7 @@ table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   </div>
   <nav role="tablist">
     <button role="tab" aria-selected="true" data-v="queue">Queue <span class="ct" id="c-queue">0</span></button>
+    <button role="tab" aria-selected="false" data-v="watch">Watchlist <span class="ct" id="c-watch">0</span></button>
     <button role="tab" aria-selected="false" data-v="apps">Applications <span class="ct" id="c-apps">0</span></button>
     <button role="tab" aria-selected="false" data-v="out">Outreach <span class="ct" id="c-out">0</span></button>
     <button role="tab" aria-selected="false" data-v="met">Metrics</button>
@@ -270,6 +271,12 @@ table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       <button data-f="below" aria-pressed="false">Below floor</button>
     </div>
     <div id="queueRows"></div>
+  </div>
+
+  <div class="view" id="v-watch">
+    <h2>Watchlist</h2>
+    <p class="hint">Scored below the queue threshold (55&ndash;69) &mdash; the rubric is unvalidated until it's been checked against hand-scored postings, and score precision is coarse, so treat anything within ~8 points of the threshold as a near-tie worth a look.</p>
+    <div id="watchRows"></div>
   </div>
 
   <div class="view" id="v-apps">
@@ -514,6 +521,13 @@ function drawQueue(){
   $('#queueRows').innerHTML=shown.length?shown.map(rowHTML).join(''):'<div class="empty">Nothing matches this filter.</div>';
   $('#c-queue').textContent=q.length;
   $('#qfilters .ct').textContent=q.length;
+  drawWatch();
+}
+
+function drawWatch(){
+  const w=P.filter(p=>p.stage==='watch').sort((a,b)=>b.score-a.score);
+  $('#watchRows').innerHTML=w.length?w.map(rowHTML).join(''):'<div class="empty">Nothing on the watchlist right now.</div>';
+  $('#c-watch').textContent=w.length;
 }
 
 function drawApps(){
@@ -544,9 +558,20 @@ function drawApps(){
 }
 
 let curDiffId=null;
-function renderDiff(id){
+async function ensureVariantLoaded(p){
+  if(p.variant){return p.variant}
+  if(!p.app){return null}
+  try{
+    const resp=await fetch(`/api/postings/${p.id}/variant`);
+    if(!resp.ok){return null}
+    p.variant=await resp.json();
+    return p.variant;
+  }catch(e){console.error('variant fetch failed:',e);return null}
+}
+
+async function renderDiff(id){
   const p=P.find(x=>x.id===id);
-  const v=p.variant;
+  const v=await ensureVariantLoaded(p);
   if(!v){toast('No resume built for this posting yet');return}
   curDiffId=id;
   const vname=v.kind==='leadership'?'Leadership':'Engineer';
@@ -572,17 +597,6 @@ function renderDiff(id){
    </div>
    <p class="hint" style="margin:16px 0 0">Assembly is selection only — every line above exists verbatim in the approved library. Nothing was rewritten for this posting.</p>`;
   $('#mask').classList.add('on');
-}
-
-function drafts(p,name){
-  const first=(name||'there').split(' ')[0];
-  const sig=p.sig[0]||'the role you posted';
-  return {
-    note:`${first} — saw ${p.co} is ${sig.charAt(0).toLowerCase()+sig.slice(1)}. I build production AI automation: shipped an autonomous decision system running live, 68 endpoints with automated risk controls. 12 years in ops before that. Open to a short conversation about the ${p.ti} role?`,
-    msg:`Hi ${first},\n\nSaw the ${p.ti} posting — the line about ${sig.charAt(0).toLowerCase()+sig.slice(1)} is what caught me.\n\nI build this kind of thing hands-on. Most recently an autonomous decision-automation platform running live in production: 68 API endpoints, automated risk controls, and a validation layer that gates what's allowed to reach execution. Twelve years running operations before that, so the automations get built against how a business actually runs.\n\nI've applied through your process. Worth 15 minutes?\n\nJames`,
-    subj:`${p.ti} — question about internal tooling scope`,
-    email:`Hi ${first},\n\nSaw the ${p.ti} posting mentions ${sig.charAt(0).toLowerCase()+sig.slice(1)}. That's most of what I've done for the past year — I built and run an autonomous decision-automation system in production, 68 endpoints with automated risk controls, plus the validation layer that gates what reaches live execution.\n\nTwelve years in operations before that, so I build against how a business actually runs.\n\nWorth a 15-minute conversation?\n\nJames Beam\nbeamlegacy.com`
-  };
 }
 
 function drawOut(){
@@ -620,19 +634,46 @@ function drawOut(){
       </div>
       <div class="drafts" id="dr-${p.id}"></div>
     </div>`}).join('');
+  a.forEach(p=>{if(p.o&&p.o.note){renderDraftsFromO(p.id)}});
 }
 
-function renderDrafts(id){
+function renderDraftsFromO(id){
   const p=P.find(x=>x.id===id), o=p.o||{};
-  if(!o.name){toast('Enter a target name first');return}
-  const d=drafts(p,o.name);
+  if(!o.note){return}
   const box=$('#dr-'+id);
+  if(!box){return}
   box.innerHTML=`
-    <div class="draft"><div class="dhead"><span class="label">LinkedIn connection note</span><span class="cc">${d.note.length} chars — verify current cap</span></div><div class="dbody">${esc(d.note)}<div class="acts"><button class="btn sm" data-cp="n-${id}">Copy</button></div></div></div>
-    <div class="draft"><div class="dhead"><span class="label">LinkedIn message</span><span class="cc">${d.msg.split(/\s+/).length} words</span></div><div class="dbody">${esc(d.msg)}<div class="acts"><button class="btn sm" data-cp="m-${id}">Copy</button></div></div></div>
-    <div class="draft"><div class="dhead"><span class="label">Email — plain text, send from your own inbox</span><span class="cc">${d.email.split(/\s+/).length} words</span></div><div class="dbody"><div class="subj">Subject: ${esc(d.subj)}</div>${esc(d.email)}<div class="acts"><button class="btn sm" data-cp="e-${id}">Copy body</button><button class="btn sm" data-cp="s-${id}">Copy subject</button></div></div></div>`;
+    <div class="draft"><div class="dhead"><span class="label">LinkedIn connection note</span><span class="cc">${o.note.length} chars — verify current cap</span></div><div class="dbody">${esc(o.note)}<div class="acts"><button class="btn sm" data-cp="n-${id}">Copy</button></div></div></div>
+    <div class="draft"><div class="dhead"><span class="label">LinkedIn message</span><span class="cc">${o.message.split(/\s+/).length} words</span></div><div class="dbody">${esc(o.message)}<div class="acts"><button class="btn sm" data-cp="m-${id}">Copy</button></div></div></div>
+    <div class="draft"><div class="dhead"><span class="label">Email — plain text, send from your own inbox</span><span class="cc">${o.email.split(/\s+/).length} words</span></div><div class="dbody"><div class="subj">Subject: ${esc(o.subject)}</div>${esc(o.email)}<div class="acts"><button class="btn sm" data-cp="e-${id}">Copy body</button><button class="btn sm" data-cp="s-${id}">Copy subject</button></div></div></div>`;
   box.classList.add('on');
-  box._d=d;
+}
+
+async function generateDrafts(id){
+  const p=P.find(x=>x.id===id), card=document.querySelector(`.oc[data-id="${id}"]`);
+  p.o=p.o||{name:'',title:'',url:''};
+  card.querySelectorAll('[data-f]').forEach(i=>p.o[i.dataset.f]=i.value);
+  if(!p.o.name){toast('Enter a target name first');return}
+  const box=$('#dr-'+id);
+  box.innerHTML='<p class="hint">Generating drafts\u2026</p>';box.classList.add('on');
+  let resp;
+  try{
+    resp=await fetch(`/api/postings/${id}/outreach`,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({target_name:p.o.name,target_title:p.o.title,target_linkedin_url:p.o.url})});
+  }catch(e){
+    box.innerHTML='';toast('Draft generation failed — see console');console.error('outreach failed:',e);return;
+  }
+  if(!resp.ok){
+    const err=await resp.json().catch(()=>({detail:'draft generation failed'}));
+    box.innerHTML='';
+    toast(resp.status===422?`Blocked — ${err.detail}`:`Failed: ${err.detail||resp.status}`);
+    return;
+  }
+  const row=await resp.json();
+  p.o.note=row.draft_linkedin_note;p.o.message=row.draft_linkedin_message;
+  p.o.subject=row.draft_email_subject;p.o.email=row.draft_email_body;
+  toast('Drafts ready');
+  renderDraftsFromO(id);
 }
 
 async function approvePosting(p){
@@ -700,24 +741,35 @@ document.addEventListener('click',e=>{
   if(df){renderDiff(+df);return}
   if(e.target.id==='mclose'||e.target.id==='mask'){$('#mask').classList.remove('on');return}
   if(e.target.id==='mdl'){
-    const p=P.find(x=>x.id===curDiffId);
-    if(p&&p.variant&&p.variant.signed_url){window.open(p.variant.signed_url,'_blank')}
-    else{toast('No file to download')}
+    (async()=>{
+      const p=P.find(x=>x.id===curDiffId);
+      const v=p&&await ensureVariantLoaded(p);
+      if(v&&v.signed_url){window.open(v.signed_url,'_blank')}
+      else{toast('No file to download')}
+    })();
     return}
 
   const gen=e.target.dataset.gen;
-  if(gen){const p=P.find(x=>x.id==gen), card=e.target.closest('.oc');
-    p.o=p.o||{};card.querySelectorAll('[data-f]').forEach(i=>p.o[i.dataset.f]=i.value);
-    renderDrafts(+gen);return}
+  if(gen){generateDrafts(+gen);return}
 
   const st=e.target.dataset.sent;
-  if(st){const p=P.find(x=>x.id==st);p.o=p.o||{};
-    const card=e.target.closest('.oc');card.querySelectorAll('[data-f]').forEach(i=>p.o[i.dataset.f]=i.value);
-    p.o.sent=new Date().toISOString().slice(0,10);toast('Outreach logged — follow up in 7 days');drawAll();return}
+  if(st){
+    (async()=>{
+      const p=P.find(x=>x.id==st);
+      try{
+        const resp=await fetch(`/api/postings/${st}/outreach/sent`,{method:'POST',
+          headers:{'Content-Type':'application/json'},body:JSON.stringify({channel:'linkedin_message'})});
+        if(!resp.ok){toast('Failed to record — see console');return}
+        const row=await resp.json();
+        p.o=p.o||{};p.o.sent=row.sent_at;
+        toast('Outreach logged — follow up in 7 days');drawAll();
+      }catch(e){toast('Failed to record — see console');console.error('mark sent failed:',e);}
+    })();
+    return}
 
   const cp=e.target.dataset.cp;
-  if(cp){const [k,id]=cp.split('-'); const box=$('#dr-'+id); const d=box._d;
-    const txt={n:d.note,m:d.msg,e:d.email,s:d.subj}[k];
+  if(cp){const [k,id]=cp.split('-'); const p=P.find(x=>x.id==id); const o=p&&p.o||{};
+    const txt={n:o.note,m:o.message,e:o.email,s:o.subject}[k];
     navigator.clipboard?.writeText(txt).then(()=>toast('Copied')).catch(()=>toast('Copy failed — select manually'));}
 });
 

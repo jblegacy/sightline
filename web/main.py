@@ -15,11 +15,12 @@ from fastapi.responses import FileResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 from sightline.anthropic_client import AnthropicClient
-from sightline.assembly import assemble
+from sightline.assembly import assemble, variant_detail
 from sightline.config import Settings, get_settings
 from sightline.dashboard import postings_to_dashboard_p, settings_to_cfg_qv
 from sightline.db import SightlineDB
 from sightline.ingest import handle_webhook_event
+from sightline.outreach import assemble_outreach
 from sightline.provenance import ProvenanceError
 from sightline.settings_service import preview_query, update_settings
 from sightline.theirstack import TheirStackClient, build_filters_from_settings, verify_webhook_signature
@@ -158,6 +159,49 @@ def api_assemble(
         raise HTTPException(status_code=422, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+
+@app.get("/api/postings/{posting_id}/variant", dependencies=[Depends(require_auth)])
+def api_variant_detail(posting_id: int, db: SightlineDB = Depends(get_db)) -> dict:
+    """Read-only — restores the diff view / fresh download link for an
+    already-assembled posting after a page reload, without re-running Sonnet
+    or re-uploading a new document."""
+    try:
+        return variant_detail(db, posting_id)
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+
+@app.post("/api/postings/{posting_id}/outreach", dependencies=[Depends(require_auth)])
+def api_outreach_generate(
+    posting_id: int,
+    body: dict[str, Any],
+    db: SightlineDB = Depends(get_db),
+    anthropic: AnthropicClient = Depends(get_anthropic),
+) -> dict:
+    try:
+        return assemble_outreach(
+            db, anthropic, posting_id,
+            target_name=body.get("target_name") or "",
+            target_title=body.get("target_title"),
+            target_linkedin_url=body.get("target_linkedin_url"),
+        )
+    except ProvenanceError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+
+@app.post("/api/postings/{posting_id}/outreach/sent", dependencies=[Depends(require_auth)])
+def api_outreach_sent(
+    posting_id: int, body: dict[str, Any], db: SightlineDB = Depends(get_db)
+) -> dict:
+    try:
+        return db.mark_outreach_sent(posting_id, body.get("channel") or "linkedin_message")
     except LookupError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
 
