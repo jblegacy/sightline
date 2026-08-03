@@ -251,6 +251,7 @@ table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   </div>
   <nav role="tablist">
     <button role="tab" aria-selected="true" data-v="queue">Queue <span class="ct" id="c-queue">0</span></button>
+    <button role="tab" aria-selected="false" data-v="watch">Watchlist <span class="ct" id="c-watch">0</span></button>
     <button role="tab" aria-selected="false" data-v="apps">Applications <span class="ct" id="c-apps">0</span></button>
     <button role="tab" aria-selected="false" data-v="out">Outreach <span class="ct" id="c-out">0</span></button>
     <button role="tab" aria-selected="false" data-v="met">Metrics</button>
@@ -270,6 +271,12 @@ table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       <button data-f="below" aria-pressed="false">Below floor</button>
     </div>
     <div id="queueRows"></div>
+  </div>
+
+  <div class="view" id="v-watch">
+    <h2>Watchlist</h2>
+    <p class="hint">Scored below the queue threshold (55&ndash;69) &mdash; the rubric is unvalidated until it's been checked against hand-scored postings, and score precision is coarse, so treat anything within ~8 points of the threshold as a near-tie worth a look.</p>
+    <div id="watchRows"></div>
   </div>
 
   <div class="view" id="v-apps">
@@ -514,6 +521,13 @@ function drawQueue(){
   $('#queueRows').innerHTML=shown.length?shown.map(rowHTML).join(''):'<div class="empty">Nothing matches this filter.</div>';
   $('#c-queue').textContent=q.length;
   $('#qfilters .ct').textContent=q.length;
+  drawWatch();
+}
+
+function drawWatch(){
+  const w=P.filter(p=>p.stage==='watch').sort((a,b)=>b.score-a.score);
+  $('#watchRows').innerHTML=w.length?w.map(rowHTML).join(''):'<div class="empty">Nothing on the watchlist right now.</div>';
+  $('#c-watch').textContent=w.length;
 }
 
 function drawApps(){
