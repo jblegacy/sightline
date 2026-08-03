@@ -36,6 +36,10 @@ class FakeDB:
             self._next_id += 1
         return self.companies[key]
 
+    def find_posting_by_external_id(self, external_id: str) -> dict[str, Any] | None:
+        row = self.postings.get(external_id)
+        return {"id": row["id"], "status": row["status"]} if row else None
+
     def upsert_posting(self, posting: dict[str, Any]) -> dict[str, Any]:
         existing = self.postings.get(posting["external_id"])
         row = {**(existing or {}), **posting}
@@ -278,6 +282,40 @@ def test_handle_job_new_is_idempotent_on_duplicate_delivery():
     dispatch(db, event)
     dispatch(db, event)  # TheirStack docs: duplicates possible in edge cases
     assert len(db.postings) == 1  # one row, not two
+
+
+def test_handle_job_new_does_not_rescore_a_redelivered_match():
+    """Regression: TheirStack redelivers job.new for a still-open match on
+    every scan cycle of an active alert, not just once — observed in
+    production burning a credit and an Anthropic call every ~hour for the
+    same 3 jobs. The posting must not be re-filtered/re-scored once it's
+    already past ingest."""
+    db = FakeDB()
+    event = {"id": 1, "type": "job.new", "payload": SAMPLE_JOB}
+    dispatch(db, event)
+    scores_after_first = len(db.scores)
+    assert scores_after_first == 1
+
+    dispatch(db, event)
+    dispatch(db, event)
+    assert len(db.scores) == scores_after_first  # no new scoring calls
+    assert db.postings["999001"]["status"] == "scored"  # not reset to 'new'
+    assert db.events[-1]["event"] == "duplicate_delivery"
+    assert db.events[-1]["payload"]["credits_consumed"] == 1
+
+
+def test_handle_job_new_rescores_when_previous_delivery_was_archived():
+    """A redelivery of a posting that was archived (below queue_min_score,
+    or filtered out) should also short-circuit — not just 'scored'."""
+    db = FakeDB(queue_min_score=999)  # forces archive-on-score for any total
+    event = {"id": 1, "type": "job.new", "payload": SAMPLE_JOB}
+    dispatch(db, event)
+    assert db.postings["999001"]["status"] == "archived"
+    scores_after_first = len(db.scores)
+
+    dispatch(db, event)
+    assert len(db.scores) == scores_after_first
+    assert db.events[-1]["event"] == "duplicate_delivery"
 
 
 def test_handle_job_closed_marks_posting_expired():

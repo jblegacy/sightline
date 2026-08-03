@@ -55,6 +55,14 @@ class SightlineDB:
         resp.raise_for_status()
         return resp.json()[0]["id"]
 
+    def find_posting_by_external_id(self, external_id: str) -> dict[str, Any] | None:
+        resp = self._client.get(
+            "/postings", params={"external_id": f"eq.{external_id}", "select": "id,status"}
+        )
+        resp.raise_for_status()
+        rows = resp.json()
+        return rows[0] if rows else None
+
     def upsert_posting(self, posting: dict[str, Any]) -> dict[str, Any]:
         """Upsert on external_id (TheirStack's globally-unique job id)."""
         resp = self._client.post(
@@ -153,6 +161,8 @@ class SightlineDB:
             params={
                 "id": f"eq.{posting_id}",
                 "select": "*,companies(id,name),scores(*),variants(*),outreach(*)",
+                "scores.order": "id.desc",
+                "variants.order": "id.desc",
             },
         )
         resp.raise_for_status()
@@ -204,6 +214,8 @@ class SightlineDB:
                 "status": "eq.scored",
                 "select": "*,companies(id,name),scores(*),variants(*),outreach(*)",
                 "order": "first_seen_at.desc",
+                "scores.order": "id.desc",
+                "variants.order": "id.desc",
             },
         )
         resp.raise_for_status()

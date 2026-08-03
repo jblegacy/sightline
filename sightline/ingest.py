@@ -55,7 +55,27 @@ def handle_job_new(
     db: SightlineDB, anthropic: AnthropicClient, settings: dict[str, Any], job: dict[str, Any]
 ) -> dict[str, Any]:
     """1 credit was already spent delivering this event — log it regardless of
-    what happens next; the credit ledger reflects real billing, not our DB state."""
+    what happens next; the credit ledger reflects real billing, not our DB state.
+
+    TheirStack redelivers job.new for a still-open match on every scan cycle
+    of an active alert, not just once (see CLAUDE.md: "Credits burn per job
+    delivered, including repeats — there is no caching"). A posting that's
+    already past ingest (filtered/scored/archived/expired) short-circuits
+    here — re-running upsert_posting on a redelivery would reset its status
+    back to 'new' via the merge, and re-scoring would burn an Anthropic call
+    for an answer we already have."""
+    external_id = str(job["id"])
+    existing = db.find_posting_by_external_id(external_id)
+    if existing is not None and existing["status"] != "new":
+        db.log_event(
+            entity_type="posting", event="duplicate_delivery", entity_id=existing["id"],
+            payload={
+                "source": "theirstack_webhook", "theirstack_job_id": job["id"],
+                "credits_consumed": 1, "existing_status": existing["status"],
+            },
+        )
+        return existing
+
     company_id = db.upsert_company(
         name=job.get("company") or job.get("company_object", {}).get("name") or "Unknown",
         domain=job.get("company_domain") or job.get("company_object", {}).get("domain"),
