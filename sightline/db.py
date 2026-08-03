@@ -104,3 +104,22 @@ class SightlineDB:
         if not rows:
             raise LookupError("settings row (id=1) not found — run the Phase 0 migration")
         return rows[0]
+
+    def get_bullets(self) -> list[dict[str, Any]]:
+        """All bullets regardless of status — scoring is keyword-matching
+        guidance, not a document build, so it isn't gated by the provenance
+        validator the way assembly (Phase 5) will be."""
+        resp = self._client.get("/bullets", params={"select": "ref,text,tags,variants"})
+        resp.raise_for_status()
+        return resp.json()
+
+    def update_posting(self, posting_id: int, fields: dict[str, Any]) -> None:
+        resp = self._client.patch("/postings", params={"id": f"eq.{posting_id}"}, json=fields)
+        resp.raise_for_status()
+
+    def insert_score(self, score: dict[str, Any]) -> dict[str, Any]:
+        resp = self._client.post(
+            "/scores", headers={"Prefer": "return=representation"}, json=score
+        )
+        resp.raise_for_status()
+        return resp.json()[0]

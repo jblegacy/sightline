@@ -6,8 +6,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from sightline.config import Settings
-from tests.test_ingest import SAMPLE_JOB, FakeDB
-from web.main import app, get_db
+from tests.test_ingest import SAMPLE_JOB, FakeAnthropic, FakeDB
+from web.main import app, get_anthropic, get_db
 from sightline.config import get_settings as real_get_settings
 
 SECRET = "a-long-enough-test-secret-value"
@@ -30,8 +30,10 @@ def client(fake_db):
         theirstack_api_key="fake",
         theirstack_webhook_secret=SECRET,
         theirstack_webhook_url="https://example.com/webhooks/theirstack",
+        anthropic_api_key="fake",
     )
     app.dependency_overrides[get_db] = lambda: fake_db
+    app.dependency_overrides[get_anthropic] = lambda: FakeAnthropic()
     yield TestClient(app)
     app.dependency_overrides.clear()
 
@@ -88,8 +90,10 @@ def test_webhook_500_when_secret_not_configured(fake_db):
         theirstack_api_key="fake",
         theirstack_webhook_secret=None,
         theirstack_webhook_url=None,
+        anthropic_api_key="fake",
     )
     app.dependency_overrides[get_db] = lambda: fake_db
+    app.dependency_overrides[get_anthropic] = lambda: FakeAnthropic()
     c = TestClient(app)
     body = json.dumps({"id": 1, "type": "job.new", "payload": SAMPLE_JOB}).encode()
     resp = c.post("/webhooks/theirstack", content=body, headers={"X-TheirStack-Signature-256": "sha256=x"})

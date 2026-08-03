@@ -8,6 +8,7 @@ from functools import lru_cache
 
 from fastapi import Depends, FastAPI, Request, Response
 
+from sightline.anthropic_client import AnthropicClient
 from sightline.config import Settings, get_settings
 from sightline.db import SightlineDB
 from sightline.ingest import handle_webhook_event
@@ -27,6 +28,15 @@ def get_db(settings: Settings = Depends(get_settings)) -> SightlineDB:
     return _db_singleton(settings)
 
 
+@lru_cache
+def _anthropic_singleton(settings: Settings) -> AnthropicClient:
+    return AnthropicClient(api_key=settings.anthropic_api_key)
+
+
+def get_anthropic(settings: Settings = Depends(get_settings)) -> AnthropicClient:
+    return _anthropic_singleton(settings)
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -37,6 +47,7 @@ async def theirstack_webhook(
     request: Request,
     settings: Settings = Depends(get_settings),
     db: SightlineDB = Depends(get_db),
+    anthropic: AnthropicClient = Depends(get_anthropic),
 ) -> Response:
     if not settings.theirstack_webhook_secret:
         # Fail closed: an unauthenticated public endpoint that writes straight
@@ -59,7 +70,7 @@ async def theirstack_webhook(
     # duplicate deliveries as harmless (upsert-on-external_id is idempotent) —
     # all per docs/THEIRSTACK_API_REFERENCE.md §8's delivery requirements.
     try:
-        result = handle_webhook_event(db, event)
+        result = handle_webhook_event(db, anthropic, event)
     except Exception:
         logger.exception(
             "failed to process webhook event id=%s type=%s", event.get("id"), event.get("type")

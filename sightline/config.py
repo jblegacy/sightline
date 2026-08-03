@@ -24,6 +24,7 @@ class Settings:
     theirstack_api_key: str
     theirstack_webhook_secret: str | None
     theirstack_webhook_url: str | None
+    anthropic_api_key: str
 
 
 @lru_cache
@@ -34,4 +35,5 @@ def get_settings() -> Settings:
         theirstack_api_key=_required("THEIRSTACK_API_KEY"),
         theirstack_webhook_secret=os.environ.get("THEIRSTACK_WEBHOOK_SECRET"),
         theirstack_webhook_url=os.environ.get("THEIRSTACK_WEBHOOK_URL"),
+        anthropic_api_key=_required("ANTHROPIC_API_KEY"),
     )
