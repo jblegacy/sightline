@@ -324,6 +324,8 @@ table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       </div>
       <div class="fld"><label>Seniority</label><input type="text" id="fSen" value="mid_level, senior, staff"><div class="note">Leave blank for all</div></div>
       <div class="fld"><label>Exclude sources</label><input type="text" id="fSrc" placeholder="e.g. linkedin.com"></div>
+      <button class="btn go" id="saveFetchCriteria" style="margin-top:6px">Save fetch criteria</button>
+      <div class="note">Saving also updates the saved search TheirStack uses to send webhook events — nothing here is enforced until saved.</div>
     </div>
 
     <div class="panel">
@@ -349,13 +351,14 @@ table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     <div class="panel">
       <h3>Credit budget</h3>
       <div class="row2">
-        <div class="fld"><label>Monthly credits</label><input type="text" id="cMonth" value="1500"></div>
+        <div class="fld"><label>Monthly credits</label><input type="text" id="cMonth" value="200"></div>
         <div class="fld"><label>Hard cap per run</label><input type="text" id="cRun" value="120">
           <div class="note">Safety valve — a bad query can't drain the month overnight</div></div>
       </div>
+      <button class="btn go" id="saveCreditBudget" style="margin:6px 0">Save credit budget</button>
       <label class="label">Used this month</label>
-      <div class="meter"><b id="cMeter" style="width:31%"></b></div>
-      <div class="note">468 of 1,500 used · 47/day average · projected to last through Aug 22</div>
+      <div class="meter"><b id="cMeter" style="width:0%"></b></div>
+      <div class="note" id="cMeterText">Loading…</div>
       <div class="warnbox" style="margin-top:13px"><b>Backlog is separate.</b> Currently-open matching roles are a one-time cost. Size it with preview, then sweep in tranches — don't let the first live run discover it.</div>
     </div>
 
@@ -391,6 +394,7 @@ table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       <div class="note">Flagging soft preferences flags everything, which destroys the signal.</div>
       <div class="fld" style="margin-top:15px"><label>Rubric version</label><input type="text" value="v1 (uncalibrated)" disabled>
         <div class="note">Editing weights forces a version bump so scores stay comparable. Calibrate against your 20 hand-scored postings first.</div></div>
+      <button class="btn go" id="saveBadges" style="margin-top:6px">Save badges &amp; scoring</button>
     </div>
   </div>
 
@@ -755,6 +759,59 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')$('#mask').classList
 let QV={salMin:0,salMax:500000,score:55,age:21,ko:9,noSal:true};
 let CFG={inc:[],exc:[]};
 let SCORE_THRESHOLD=70;
+let RAW_SETTINGS={};
+
+function csv(s){return (s||'').split(',').map(x=>x.trim()).filter(Boolean)}
+
+function populateCriteriaForm(s){
+  RAW_SETTINGS=s;
+  $('#fSalOn').checked=!!s.fetch_salary_filter;
+  $('#fSalRow').style.opacity=s.fetch_salary_filter?'1':'.4';
+  $('#fSalRow').style.pointerEvents=s.fetch_salary_filter?'auto':'none';
+  $('#fSalMin').value=s.fetch_salary_min??'';
+  $('#fSalMax').value=s.fetch_salary_max??'';
+  $('#fRemote').checked=s.remote_only!==false;
+  $('#fOpen').checked=s.open_only!==false;
+  $('#fDirect').checked=s.direct_employer!==false;
+  $('#fCountry').value=(s.countries||['US']).join(', ');
+  $('#fEmp').value=s.min_employee_count??50;
+  $('#fEmp2').value=(s.employment_types||['full_time','contract']).join(', ');
+  $('#fSen').value=(s.seniority||[]).join(', ');
+  $('#fSrc').value=(s.source_exclude||[]).join(', ');
+
+  $('#cMonth').value=s.monthly_credits??200;
+  $('#cRun').value=s.per_run_cap??120;
+
+  $('#qSalMin').value=s.queue_salary_min??0;
+  $('#qSalMax').value=s.queue_salary_max??500000;
+  $('#qScore').value=s.queue_min_score??55;
+  $('#qAge').value=s.queue_max_age_days??21;
+  $('#qKo').value=String(s.queue_ko_tolerance??9);
+  $('#qNoSal').checked=s.queue_include_no_salary!==false;
+
+  $('#sThresh').value=s.score_threshold??70;
+  $('#sTarget').value=s.comp_target??150000;
+  $('#sLow').value=s.comp_low_line??90000;
+  $('#sHard').checked=s.hard_knockouts_only!==false;
+}
+
+async function patchSettings(fields){
+  const resp=await fetch('/api/settings',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(fields)});
+  if(!resp.ok){toast('Save failed — see console');console.error('patchSettings failed',await resp.text());return null}
+  const body=await resp.json();
+  RAW_SETTINGS=body.raw; QV=body.qv; CFG=body.cfg; SCORE_THRESHOLD=body.scoreThreshold;
+  return body;
+}
+
+async function loadCredits(){
+  try{
+    const c=await fetch('/api/credits').then(r=>r.json());
+    const pct=Math.min(100,Math.round(100*c.used_api_credits/Math.max(1,c.monthly_credits)));
+    $('#cMeter').style.width=pct+'%';
+    $('#cMeter').className=pct>=90?'over':pct>=70?'warn':'';
+    $('#cMeterText').textContent=`${c.used_api_credits} of ${c.monthly_credits} used this month (${c.api_credits} total granted, per-run cap ${c.per_run_cap})`;
+  }catch(e){console.error('loadCredits failed:',e)}
+}
 
 function drawTags(){
   [['tiInc','inc',''],['tiExc','exc','neg']].forEach(([id,key,cls])=>{
@@ -769,44 +826,58 @@ function drawTags(){
   });
 }
 
-function preview(){
-  // stand-in for the free blurred-preview call; scales with query breadth
-  const breadth=CFG.inc.length, narrow=CFG.exc.length;
-  const day=Math.max(4,Math.round(breadth*5.2-narrow*1.6+(Math.random()*6-3)));
-  const week=Math.round(day*6.4), back=Math.round(day*34);
-  $('#pDay').textContent=day; $('#pWeek').textContent=week.toLocaleString(); $('#pBack').textContent=back.toLocaleString();
-  const budget=parseInt($('#cMonth').value||1500,10), perDay=Math.round(budget/30);
-  const days=Math.floor(budget/Math.max(day,1));
-  let msg;
-  if(day>perDay*1.25){
-    msg=`<b style="color:var(--stop)">Too broad.</b> At ${day}/day you'd exhaust ${budget.toLocaleString()} credits in about ${days} days. Trim titles or raise the employee-count floor.`;
-  }else if(day<perDay*0.5){
-    msg=`<b style="color:var(--gate)">Possibly too narrow.</b> ${day}/day uses roughly ${Math.round(day*30)} credits a month against a ${budget.toLocaleString()} budget. You have room to widen.`;
-  }else{
-    msg=`<b style="color:var(--auto)">Well sized.</b> ${day}/day is about ${Math.round(day*30).toLocaleString()} credits a month against ${budget.toLocaleString()}. Roughly ${Math.round(day*0.2)} reaching the queue daily.`;
+function currentFetchCriteriaFields(){
+  return {
+    title_include: CFG.inc, title_exclude: CFG.exc,
+    fetch_salary_filter: $('#fSalOn').checked,
+    fetch_salary_min: +($('#fSalMin').value||0)||null,
+    fetch_salary_max: +($('#fSalMax').value||0)||null,
+    remote_only: $('#fRemote').checked, open_only: $('#fOpen').checked, direct_employer: $('#fDirect').checked,
+    countries: csv($('#fCountry').value), min_employee_count: +($('#fEmp').value||0),
+    employment_types: csv($('#fEmp2').value), seniority: csv($('#fSen').value),
+    source_exclude: csv($('#fSrc').value),
+  };
+}
+
+async function preview(){
+  const btn=$('#doPrev'); btn.disabled=true; btn.textContent='Running preview\u2026';
+  try{
+    const result=await fetch('/api/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(currentFetchCriteriaFields())}).then(r=>{
+      if(!r.ok)throw new Error('preview '+r.status); return r.json();
+    });
+    const day=result.day, week=result.week, backlog=result.backlog, sample=result.sample;
+    $('#pDay').textContent=day; $('#pWeek').textContent=week.toLocaleString(); $('#pBack').textContent=backlog.toLocaleString();
+    const budget=parseInt($('#cMonth').value||200,10), perDay=budget/30;
+    const days=Math.floor(budget/Math.max(day,0.1));
+    let msg;
+    if(day>perDay*1.25){
+      msg=`<b style="color:var(--stop)">Too broad.</b> At ${day}/day you'd exhaust ${budget.toLocaleString()} credits in about ${days} days. Trim titles or raise the employee-count floor.`;
+    }else if(day<perDay*0.5){
+      msg=`<b style="color:var(--gate)">Possibly too narrow.</b> ${day}/day uses roughly ${Math.round(day*30)} credits a month against a ${budget.toLocaleString()} budget. You have room to widen.`;
+    }else{
+      msg=`<b style="color:var(--auto)">Well sized.</b> ${day}/day is about ${Math.round(day*30).toLocaleString()} credits a month against ${budget.toLocaleString()}.`;
+    }
+    msg+=`<br><span class="cc">Backlog of ${backlog.toLocaleString()} is a separate one-time cost \u2014 about ${(backlog/budget).toFixed(1)} months of credits if swept in one run.</span>`;
+    $('#prevMsg').innerHTML=msg;
+    const rows=sample.map(j=>`<tr>
+        <td>${esc(j.job_title||'')}</td>
+        <td class="sal">${j.salary_string?esc(j.salary_string):'<span style="color:var(--muted)">not posted</span>'}</td>
+        <td>${esc(j.seniority||'')}</td>
+        <td class="mono" style="font-size:11px">${esc(j.location||'')}</td>
+        <td class="mono" style="font-size:11px">${esc(j.date_posted||'')}</td>
+        <td><span class="blur">${esc(j.company||'blurred')}</span></td>
+        <td><span class="blur">${esc(j.url||'blurred')}</span></td>
+      </tr>`).join('');
+    $('#prevPrec').innerHTML=`<div class="sampwrap"><table class="samp"><thead><tr>
+        <th>Job title</th><th>Salary</th><th>Seniority</th><th>Location</th><th>Posted</th><th>Company</th><th>URL</th></tr></thead>
+        <tbody>${rows||'<tr><td colspan="7">No matches for this query.</td></tr>'}</tbody></table></div>
+      <p class="sampnote"><b>Blurred fields cost nothing and can't be used.</b> This is a real sample from TheirStack in preview mode \u2014 0 credits.</p>`;
+    $('#prevOut').style.display='block';
+  }catch(e){
+    toast('Preview failed \u2014 see console'); console.error('preview failed:',e);
+  }finally{
+    btn.disabled=false; btn.textContent='Run free preview';
   }
-  msg+=`<br><span class="cc">Backlog of ${back.toLocaleString()} is a separate one-time cost \u2014 about ${(back/budget).toFixed(1)} months of credits if swept in one run.</span>`;
-  $('#prevMsg').innerHTML=msg;
-  // blurred sample — what preview mode actually returns
-  const titles=CFG.inc.slice(0,8), sen=['mid_level','senior','senior','staff','mid_level'];
-  const rows=titles.map((t,i)=>{
-    const has=i%3!==1;
-    const lo=90+i*11, hi=lo+32;
-    return `<tr>
-      <td>${esc(t.replace(/\b\w/g,c=>c.toUpperCase()))}</td>
-      <td class="sal">${has?`$${lo}\u2013${hi}K`:'<span style="color:var(--muted)">not posted</span>'}</td>
-      <td>${sen[i%5]}</td>
-      <td class="mono" style="font-size:11px">${i%2?'Remote \u00b7 US':'Remote \u00b7 US'}</td>
-      <td class="mono" style="font-size:11px">${i}d ago</td>
-      <td><span class="blur">Acme Holdings Inc</span></td>
-      <td><span class="blur">apply.example.com/jobs/1</span></td>
-    </tr>`}).join('');
-  $('#prevPrec').innerHTML=`<div class="sampwrap"><table class="samp"><thead><tr>
-      <th>Job title</th><th>Salary</th><th>Seniority</th><th>Location</th><th>Posted</th><th>Company</th><th>URL</th></tr></thead>
-      <tbody>${rows}</tbody></table></div>
-    <p class="sampnote"><b>Blurred fields cost nothing and can't be used.</b> Preview returns title, salary, seniority, location, dates, company size, funding stage, and tech tags. It withholds the job description, company name, and every URL \u2014 so you can judge the query, not work from it.</p>
-    <p class="sampnote">Scan the titles. If your query is dragging in roles from the wrong discipline, this is where you'd see it \u2014 a count never would.</p>`;
-  $('#prevOut').style.display='block';
 }
 
 document.addEventListener('keydown',e=>{
@@ -825,16 +896,34 @@ document.addEventListener('click',e=>{
     $('#prevSize').style.display=pt.dataset.pt==='size'?'block':'none';
     $('#prevPrec').style.display=pt.dataset.pt==='prec'?'block':'none';return}
   if(e.target.id==='qApply'){
-    QV={salMin:+($('#qSalMin').value||0), salMax:+($('#qSalMax').value||1e7),
-        score:+($('#qScore').value||0), age:+($('#qAge').value||999),
-        ko:+$('#qKo').value, noSal:$('#qNoSal').checked};
-    drawQueue(); qCount();
-    toast('Queue filters applied \u2014 no credits spent');
-    document.querySelector('nav button[data-v="queue"]').click();
+    const fields={
+      queue_salary_min:+($('#qSalMin').value||0), queue_salary_max:+($('#qSalMax').value||1e7),
+      queue_min_score:+($('#qScore').value||0), queue_max_age_days:+($('#qAge').value||999),
+      queue_ko_tolerance:+$('#qKo').value, queue_include_no_salary:$('#qNoSal').checked,
+    };
+    patchSettings(fields).then(ok=>{
+      if(!ok)return;
+      drawQueue(); qCount();
+      toast('Queue filters saved \u2014 no credits spent');
+      document.querySelector('nav button[data-v="queue"]').click();
+    });
     return}
   if(e.target.id==='fSalOn'){
     const on=e.target.checked, row=$('#fSalRow');
     row.style.opacity=on?'1':'.4'; row.style.pointerEvents=on?'auto':'none';
+    return}
+  if(e.target.id==='saveFetchCriteria'){
+    patchSettings(currentFetchCriteriaFields()).then(ok=>{if(ok)toast('Fetch criteria saved \u2014 synced to TheirStack')});
+    return}
+  if(e.target.id==='saveCreditBudget'){
+    patchSettings({monthly_credits:+($('#cMonth').value||200), per_run_cap:+($('#cRun').value||120)})
+      .then(ok=>{if(ok){toast('Credit budget saved');loadCredits()}});
+    return}
+  if(e.target.id==='saveBadges'){
+    patchSettings({
+      score_threshold:+($('#sThresh').value||70), comp_target:+($('#sTarget').value||150000),
+      comp_low_line:+($('#sLow').value||90000), hard_knockouts_only:$('#sHard').checked,
+    }).then(ok=>{if(ok){toast('Badges & scoring saved');drawQueue()}});
     return}
 });
 
@@ -854,6 +943,7 @@ async function loadLiveData(){
     ]);
     P=postings;
     QV=settings.qv; CFG=settings.cfg; SCORE_THRESHOLD=settings.scoreThreshold;
+    populateCriteriaForm(settings.raw);
     const queueCt=P.filter(p=>p.stage==='queue').length, watchCt=P.filter(p=>p.stage==='watch').length;
     runinfo.textContent=`${P.length} scored · ${queueCt} in queue (≥${SCORE_THRESHOLD}) · ${watchCt} on watchlist`;
   }catch(e){
@@ -861,6 +951,7 @@ async function loadLiveData(){
     console.error('loadLiveData failed:',e);
   }
   drawAll();
+  loadCredits();
 }
 loadLiveData();
 </script>

@@ -8,6 +8,7 @@ import logging
 import secrets
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse
@@ -18,7 +19,8 @@ from sightline.config import Settings, get_settings
 from sightline.dashboard import postings_to_dashboard_p, settings_to_cfg_qv
 from sightline.db import SightlineDB
 from sightline.ingest import handle_webhook_event
-from sightline.theirstack import TheirStackClient, verify_webhook_signature
+from sightline.settings_service import preview_query, update_settings
+from sightline.theirstack import TheirStackClient, build_filters_from_settings, verify_webhook_signature
 
 logger = logging.getLogger("sightline.web")
 
@@ -89,7 +91,50 @@ def api_postings(db: SightlineDB = Depends(get_db)) -> list[dict]:
 
 @app.get("/api/settings", dependencies=[Depends(require_auth)])
 def api_settings(db: SightlineDB = Depends(get_db)) -> dict:
-    return settings_to_cfg_qv(db.get_settings())
+    raw = db.get_settings()
+    return {"raw": raw, **settings_to_cfg_qv(raw)}
+
+
+@app.patch("/api/settings", dependencies=[Depends(require_auth)])
+def api_settings_patch(
+    fields: dict[str, Any],
+    db: SightlineDB = Depends(get_db),
+    theirstack: TheirStackClient = Depends(get_theirstack),
+) -> dict:
+    """Persists to `settings`, and — only for fields that affect what
+    TheirStack actually sends us — pushes the change to the saved search too.
+    See sightline/settings_service.py."""
+    updated = update_settings(db, theirstack, fields)
+    return {"raw": updated, **settings_to_cfg_qv(updated)}
+
+
+@app.post("/api/preview", dependencies=[Depends(require_auth)])
+def api_preview(
+    overrides: dict[str, Any],
+    db: SightlineDB = Depends(get_db),
+    theirstack: TheirStackClient = Depends(get_theirstack),
+) -> dict:
+    """Real TheirStack free-count/preview numbers for the form's current
+    (possibly unsaved) values — 0 credits, safe to call on every keystroke's
+    worth of tuning. `overrides` merges over the saved settings row so
+    Preview reflects what's in the form, not just what's already saved."""
+    merged = {**db.get_settings(), **overrides}
+    filters = build_filters_from_settings(merged)
+    return preview_query(theirstack, filters)
+
+
+@app.get("/api/credits", dependencies=[Depends(require_auth)])
+def api_credits(
+    db: SightlineDB = Depends(get_db), theirstack: TheirStackClient = Depends(get_theirstack)
+) -> dict:
+    settings = db.get_settings()
+    balance = theirstack.credit_balance()
+    return {
+        "used_api_credits": balance["used_api_credits"],
+        "api_credits": balance["api_credits"],
+        "monthly_credits": settings.get("monthly_credits", 200),
+        "per_run_cap": settings.get("per_run_cap", 120),
+    }
 
 
 @app.post("/webhooks/theirstack")

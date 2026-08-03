@@ -78,6 +78,10 @@ class FakeDB:
         self.scores.append(row)
         return row
 
+    def update_settings(self, fields: dict[str, Any]) -> dict[str, Any]:
+        self._settings.update(fields)
+        return self._settings
+
 
 class FakeAnthropic:
     """Stand-in for AnthropicClient — score_posting only calls structured_call.
@@ -132,6 +136,16 @@ class FakeTheirStack:
 
     def set_webhook_active(self, webhook_id, is_active):
         self.disabled_webhook = not is_active
+
+    def upsert_saved_search(self, name, filters):
+        self.last_synced_filters = filters
+        return {"id": 1, "name": name}
+
+    def free_count(self, filters):
+        return 42
+
+    def preview(self, filters, limit=25):
+        return {"data": [{"job_title": "Sample Job", "has_blurred_data": True}]}
 
 
 def dispatch(db, event, anthropic=None, theirstack=None):

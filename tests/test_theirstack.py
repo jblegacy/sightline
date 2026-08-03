@@ -85,6 +85,41 @@ def test_build_filters_from_settings_satisfies_required_filter_guard():
     _require_dedup_filter(filters)  # should not raise
 
 
+def test_build_filters_from_settings_seniority_included_when_set():
+    settings = {"title_include": ["ai engineer"], "seniority": ["senior", "staff"]}
+    filters = build_filters_from_settings(settings)
+    assert filters["job_seniority_or"] == ["senior", "staff"]
+
+
+def test_build_filters_from_settings_seniority_omitted_when_empty():
+    settings = {"title_include": ["ai engineer"], "seniority": []}
+    filters = build_filters_from_settings(settings)
+    assert "job_seniority_or" not in filters
+
+
+def test_build_filters_from_settings_source_exclude_included_when_set():
+    settings = {"title_include": ["ai engineer"], "source_exclude": ["linkedin.com"]}
+    filters = build_filters_from_settings(settings)
+    assert filters["url_domain_not"] == ["linkedin.com"]
+
+
+def test_build_filters_from_settings_salary_filter_off_by_default_even_with_values_set():
+    settings = {"title_include": ["ai engineer"], "fetch_salary_min": 90000, "fetch_salary_max": 200000}
+    filters = build_filters_from_settings(settings)
+    assert "min_salary_usd" not in filters
+    assert "max_salary_usd" not in filters
+
+
+def test_build_filters_from_settings_salary_filter_applied_when_explicitly_enabled():
+    settings = {
+        "title_include": ["ai engineer"], "fetch_salary_filter": True,
+        "fetch_salary_min": 90000, "fetch_salary_max": 200000,
+    }
+    filters = build_filters_from_settings(settings)
+    assert filters["min_salary_usd"] == 90000
+    assert filters["max_salary_usd"] == 200000
+
+
 # ---- HTTP layer, mocked with respx ----
 
 

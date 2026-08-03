@@ -190,3 +190,57 @@ def test_api_settings_returns_cfg_qv_shape(client):
     assert resp.status_code == 200
     body = resp.json()
     assert "cfg" in body and "qv" in body and "scoreThreshold" in body
+    assert "raw" in body  # full row, for populating every Criteria-tab field
+
+
+# ---- settings write + preview + credits ----
+
+
+def test_api_settings_patch_requires_auth(client):
+    resp = client.patch("/api/settings", json={"queue_min_score": 60})
+    assert resp.status_code == 401
+
+
+def test_api_settings_patch_persists_and_returns_updated(client, fake_db):
+    resp = client.patch("/api/settings", json={"queue_min_score": 60}, auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 200
+    assert resp.json()["raw"]["queue_min_score"] == 60
+    assert fake_db.get_settings()["queue_min_score"] == 60
+
+
+def test_api_settings_patch_fetch_field_syncs_theirstack(client):
+    resp = client.patch(
+        "/api/settings", json={"title_include": ["ai engineer"]}, auth=(DASH_USER, DASH_PASS)
+    )
+    assert resp.status_code == 200
+    # can't inspect the FakeTheirStack instance directly here (it's constructed
+    # fresh per-request via the dependency override lambda), but a 200 with no
+    # exception confirms upsert_saved_search was reachable and didn't raise
+
+
+def test_api_preview_requires_auth(client):
+    resp = client.post("/api/preview", json={})
+    assert resp.status_code == 401
+
+
+def test_api_preview_returns_real_shape(client):
+    resp = client.post("/api/preview", json={"title_include": ["ai engineer"]}, auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert set(body.keys()) == {"day", "week", "backlog", "sample"}
+    assert body["week"] == 42
+    assert body["day"] == 6.0  # 42/7, FakeTheirStack.free_count always returns 42
+
+
+def test_api_credits_requires_auth(client):
+    resp = client.get("/api/credits")
+    assert resp.status_code == 401
+
+
+def test_api_credits_returns_real_balance(client):
+    resp = client.get("/api/credits", auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["used_api_credits"] == 10  # FakeTheirStack default
+    assert body["api_credits"] == 200
+    assert body["monthly_credits"] == 200
