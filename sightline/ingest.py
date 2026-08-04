@@ -44,8 +44,13 @@ def job_to_posting(
 ) -> dict[str, Any]:
     """Map a TheirStack job object (search response or job.new payload — same
     schema) to a `postings` row. See docs/THEIRSTACK_API_REFERENCE.md §7."""
-    comp_min = job.get("min_annual_salary_usd")
-    comp_max = job.get("max_annual_salary_usd")
+    # TheirStack sometimes sends salary as a float (e.g. 208705.0) — postings.
+    # comp_min/comp_max are int columns, and Postgres rejects "208705.0" as
+    # invalid integer input outright, failing the whole insert.
+    raw_comp_min = job.get("min_annual_salary_usd")
+    raw_comp_max = job.get("max_annual_salary_usd")
+    comp_min = round(raw_comp_min) if raw_comp_min is not None else None
+    comp_max = round(raw_comp_max) if raw_comp_max is not None else None
     url = job.get("final_url") or job["url"]  # prefer the ATS-original link
     content_hash = hashlib.sha256(
         f"{job['job_title']}|{job.get('company_domain', '')}|{job.get('description', '')}".encode()

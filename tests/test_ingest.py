@@ -347,6 +347,18 @@ def test_job_to_posting_remote_flag_unclear_when_null():
     assert posting["remote_flag"] == "unclear"
 
 
+def test_job_to_posting_rounds_float_salary_to_int():
+    # TheirStack sends salary as a float sometimes (e.g. 208705.0) — postings.
+    # comp_min/comp_max are int columns; passing the float through verbatim
+    # 400s the insert (Postgres rejects "208705.0" as invalid integer input).
+    job = {**SAMPLE_JOB, "min_annual_salary_usd": 208705.0, "max_annual_salary_usd": 230000.6}
+    posting = job_to_posting(job, company_id=1)
+    assert posting["comp_min"] == 208705
+    assert posting["comp_max"] == 230001
+    assert isinstance(posting["comp_min"], int)
+    assert isinstance(posting["comp_max"], int)
+
+
 # ---- classify_search_profile ----
 
 _PROFILES = [
