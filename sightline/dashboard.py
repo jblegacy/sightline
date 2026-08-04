@@ -128,6 +128,7 @@ def posting_row_to_p(row: dict[str, Any], co_count: int) -> dict[str, Any] | Non
         "o": _outreach_to_o(outreach[0]) if outreach else None,
         "co": company.get("name", "Unknown"),
         "ti": row["title"],
+        "url": row.get("url"),
         "loc": row.get("location_raw") or "not stated",
         "age": _age_string(row["first_seen_at"]),
         "compMin": row.get("comp_min"),

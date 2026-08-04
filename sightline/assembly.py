@@ -256,6 +256,12 @@ def select_bullets(
 
     by_org: dict[str, list[dict[str, Any]]] = {}
     for b in bullets:
+        # retired is a permanent exclusion, not "unreviewed" — a retired
+        # bullet should never be a candidate, not just fail assert_shippable
+        # after already being selected (found live: it surfaced as a
+        # confusing assembly error instead of being cleanly passed over).
+        if b.get("status") == "retired":
+            continue
         if variant in (b.get("variants") or []) and b.get("source_org") in EMPLOYER_META:
             by_org.setdefault(b["source_org"], []).append(b)
 
@@ -407,9 +413,13 @@ Company signals: {', '.join(score.get('company_signals') or [])}"""
         tool_name="submit_brief",
         tool_description="Submit the one-page prep brief.",
         input_schema=BRIEF_SCHEMA,
-        max_tokens=500,
+        max_tokens=800,
     )
-    return result["brief"], cost_usd
+    # BRIEF_SCHEMA marks "brief" required, but tool-use generation
+    # completeness isn't guaranteed (same class of bug found live in
+    # scoring.py) — brief is private prep material, not a shipped claim, so
+    # falling back to empty is safe; it must never block the actual .docx.
+    return result.get("brief") or "", cost_usd
 
 
 def assemble(

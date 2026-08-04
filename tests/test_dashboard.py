@@ -31,6 +31,7 @@ SAMPLE_ROW = {
     "id": 10,
     "company_id": 3,
     "title": "AI Enablement Lead",
+    "url": "https://boards.greenhouse.io/acme/jobs/12345",
     "location_raw": "US Remote",
     "first_seen_at": datetime.now(timezone.utc).isoformat(),
     "comp_min": 160000,
@@ -73,6 +74,7 @@ def test_posting_row_to_p_maps_core_fields():
     assert p["rt"] == "VP Engineering"
     assert p["nc"] == [{"n": "Jane Doe", "t": "CTO"}]
     assert p["ci"] == ["system design interview"]
+    assert p["url"] == "https://boards.greenhouse.io/acme/jobs/12345"
 
 
 def test_posting_row_to_p_returns_none_without_a_score():
