@@ -410,9 +410,9 @@ table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
         <div class="fld"><label>Comp target</label><input type="text" id="sTarget" value="150000"><div class="note">At or above → teal badge</div></div>
         <div class="fld"><label>Well-below line</label><input type="text" id="sLow" value="90000"><div class="note">Below → red badge</div></div>
       </div>
-      <div class="togline"><input type="checkbox" id="sHard" checked><label for="sHard">Flag hard requirements only — ignore "preferred"</label></div>
-      <div class="note">Flagging soft preferences flags everything, which destroys the signal.</div>
-      <div class="fld" style="margin-top:15px"><label>Rubric version</label><input type="text" value="v1 (uncalibrated)" disabled>
+      <div class="togline"><input type="checkbox" id="sHard" checked disabled><label for="sHard">Flag hard requirements only — ignore "preferred"</label></div>
+      <div class="note">Always on — CLAUDE.md rule, not a preference: flagging soft preferences destroys the signal. Not editable here.</div>
+      <div class="fld" style="margin-top:15px"><label>Rubric version</label><input type="text" id="sRubric" disabled>
         <div class="note">Editing weights forces a version bump so scores stay comparable. Calibrate against your 20 hand-scored postings first.</div></div>
       <button class="btn go" id="saveBadges" style="margin-top:6px">Save badges &amp; scoring</button>
     </div>
@@ -422,12 +422,12 @@ table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     <h2>Metrics</h2>
     <p class="hint">Last 7 days.</p>
     <div class="mgrid">
-      <div class="mcell"><span class="big">19h</span><span class="sub">Median posting → submitted</span></div>
-      <div class="mcell"><span class="big">412</span><span class="sub">Ingested this week</span></div>
-      <div class="mcell"><span class="big">31</span><span class="sub">Surfaced to queue</span></div>
-      <div class="mcell"><span class="big">12</span><span class="sub">Submitted</span></div>
-      <div class="mcell"><span class="big">2</span><span class="sub">Replies</span></div>
-      <div class="mcell"><span class="big">$0.71</span><span class="sub">Scoring spend, 7 days</span></div>
+      <div class="mcell"><span class="big" id="metLead">—</span><span class="sub">Median posting → submitted</span></div>
+      <div class="mcell"><span class="big" id="metIngested">—</span><span class="sub">Ingested this week</span></div>
+      <div class="mcell"><span class="big" id="metSurfaced">—</span><span class="sub">Surfaced to queue</span></div>
+      <div class="mcell"><span class="big" id="metSubmitted">—</span><span class="sub">Submitted</span></div>
+      <div class="mcell"><span class="big" id="metReplies">—</span><span class="sub">Replies</span></div>
+      <div class="mcell"><span class="big" id="metSpend">—</span><span class="sub">Scoring spend, 7 days</span></div>
     </div>
     <p class="hint">Six counters, one query each. Response-rate-by-variant comes later, once there's enough data to mean anything.</p>
   </div>
@@ -447,13 +447,13 @@ const DIMS=[['Role fit',25],['Evidence overlap',20],['Seniority & scope',15],['R
 
 let P=[];
 
-const FLOOR=150000, LOWBAR=90000;
 function compTier(p){
   if(p.compSrc!=='posted'||p.compMax==null) return {k:'unknown',t:'comp not posted'};
+  const floor=RAW_SETTINGS.comp_target??150000, lowbar=RAW_SETTINGS.comp_low_line??90000;
   const mid=(p.compMin+p.compMax)/2;
   const band=`$${Math.round(p.compMin/1000)}\u2013${Math.round(p.compMax/1000)}K`;
-  if(p.compMax>=FLOOR) return {k:'target',t:band};
-  if(mid>=LOWBAR)      return {k:'under',t:band+' \u00b7 below floor'};
+  if(p.compMax>=floor) return {k:'target',t:band};
+  if(mid>=lowbar)       return {k:'under',t:band+' \u00b7 below floor'};
   return {k:'low',t:band+' \u00b7 well below'};
 }
 const $=s=>document.querySelector(s);
@@ -553,12 +553,12 @@ function drawApps(){
     <th>Company</th><th>Role</th><th>Resume</th><th>Status</th><th>Submitted</th><th>Follow-up</th><th>Notes</th><th></th></tr></thead><tbody>
     ${a.map(p=>{const ap=p.app||{};
       const st=ap.status||'building';
-      const overdue=ap.due&&ap.due<'2026-07-30';
+      const overdue=ap.due&&ap.due<new Date().toISOString().slice(0,10);
       const pillCls={'submitted':'submitted','screen':'screen','interview':'interview','rejected':'rejected','ghosted':'ghosted'}[st]||'unsent';
       return `<tr data-id="${p.id}">
         <td><b>${esc(p.co)}</b><br><span class="tag ${p.v}">${esc(ap.variant||'')}</span></td>
         <td>${esc(p.ti)}</td>
-        <td>${ap.file?`<a href="#" class="mono" style="font-size:11.5px">${esc(ap.file)}</a>
+        <td>${ap.file?`<a href="#" class="mono" data-dl="${p.id}" style="font-size:11.5px">${esc(ap.file)}</a>
              ${ap.finalFile?`<br><span class="cc">sent: ${esc(ap.finalFile)}</span>`:(ap.sent?'<br><span class="cc" style="color:var(--gate)">final not recorded</span>':'')}
              <br><button class="btn sm ghost" data-diff="${p.id}" style="margin-top:4px">View changes</button>
              ${ap.sent&&!ap.finalFile?`<button class="btn sm ghost" data-final="${p.id}" style="margin-top:4px">Record final</button>`:''}`:'<span class="cc">building\u2026</span>'}</td>
@@ -729,24 +729,44 @@ document.addEventListener('click',e=>{
   const act=e.target.dataset.act;
   if(act){
     const row=e.target.closest('.row'), p=P.find(x=>x.id==row.dataset.id);
-    if(act==='approve'){approvePosting(p);}
+    if(act==='approve'){approvePosting(p);drawAll();return}
     if(act==='reject'){const why=prompt('Why is this a no? (feeds rubric calibration)','');
-      if(why===null)return; p.stage='rejected';p.rejectWhy=why||'no reason given';
-      toast('Rejected \u2014 reason logged for rubric v2');}
-    if(act==='defer'){p.stage='watch';toast('Deferred to watchlist');}
-    drawAll();return}
+      if(why===null)return;
+      patchApplication(p.id,{status:'rejected',notes:why||'no reason given'})
+        .then(ok=>{if(ok){toast('Rejected \u2014 reason logged for rubric v2');reloadPostings()}});
+      return}
+    if(act==='defer'){
+      patchApplication(p.id,{status:'deferred'})
+        .then(ok=>{if(ok){toast('Deferred to watchlist');reloadPostings()}});
+      return}
+    return}
+
+  const dl=e.target.dataset.dl;
+  if(dl){
+    e.preventDefault();
+    (async()=>{
+      const p=P.find(x=>x.id==dl);
+      const v=p&&await ensureVariantLoaded(p);
+      if(v&&v.signed_url){window.open(v.signed_url,'_blank')}
+      else{toast('No file to download')}
+    })();
+    return}
 
   const mk=e.target.dataset.mark;
   if(mk){const p=P.find(x=>x.id==mk);
     if(p.app.status==='building'){toast('Resume still assembling');return}
-    p.stage='applied';
-    p.app.sent='2026-07-30 '+new Date().toTimeString().slice(0,5);p.app.status='submitted';p.app.due='2026-08-06';
-    toast('Submitted \u2014 follow-up set for Aug 6');drawAll();return}
+    const due=new Date(Date.now()+7*86400000).toISOString().slice(0,10);
+    patchApplication(mk,{status:'submitted',submitted_at:new Date().toISOString(),follow_up_due:due})
+      .then(ok=>{if(ok){toast('Submitted \u2014 follow-up set for '+due);reloadPostings()}});
+    return}
 
   const fin=e.target.dataset.final;
   if(fin){const p=P.find(x=>x.id==fin);
     const nm=prompt('Filename of the version you actually submitted (after your edits):',p.app.file);
-    if(nm){p.app.finalFile=nm;toast('Final version recorded');drawAll();} return}
+    if(!nm)return;
+    patchApplication(fin,{final_filename:nm})
+      .then(ok=>{if(ok){toast('Final version recorded');reloadPostings()}});
+    return}
 
   const qf=e.target.closest('#qfilters button');
   if(qf){QF=qf.dataset.f;document.querySelectorAll('#qfilters button').forEach(b=>b.setAttribute('aria-pressed',b===qf));drawQueue();return}
@@ -789,11 +809,16 @@ document.addEventListener('click',e=>{
 
 document.addEventListener('change',e=>{
   const id=e.target.dataset.st;
-  if(id){const p=P.find(x=>x.id==id);p.app.status=e.target.value;
-    if(e.target.value==='submitted'&&!p.app.sent){p.app.sent='2026-07-30 09:00';p.app.due='2026-08-06';p.stage='applied';}
-    toast('Status \u2192 '+e.target.value);drawAll();}
+  if(id){const p=P.find(x=>x.id==id);
+    const fields={status:e.target.value};
+    if(e.target.value==='submitted'&&!p.app.sent){
+      fields.submitted_at=new Date().toISOString();
+      fields.follow_up_due=new Date(Date.now()+7*86400000).toISOString().slice(0,10);
+    }
+    patchApplication(id,fields).then(ok=>{if(ok){toast('Status \u2192 '+e.target.value);reloadPostings()}});
+  }
   const nt=e.target.dataset.nt;
-  if(nt){const p=P.find(x=>x.id==nt);p.app.notes=e.target.value;}
+  if(nt){patchApplication(nt,{notes:e.target.value});}
 });
 document.addEventListener('keydown',e=>{if(e.key==='Escape')$('#mask').classList.remove('on')});
 
@@ -837,7 +862,7 @@ function populateCriteriaForm(s){
   $('#sThresh').value=s.score_threshold??70;
   $('#sTarget').value=s.comp_target??150000;
   $('#sLow').value=s.comp_low_line??90000;
-  $('#sHard').checked=s.hard_knockouts_only!==false;
+  $('#sRubric').value=(s.rubric_version||'v1')+' (uncalibrated)';
 }
 
 async function patchSettings(fields){
@@ -857,6 +882,31 @@ async function patchSearchProfile(profileId,fields){
   if(i>=0)PROFILES[i]=updated; else PROFILES.push(updated);
   if(profileId===ACTIVE)CFG=updated;
   return updated;
+}
+
+async function patchApplication(id,fields){
+  const resp=await fetch(`/api/postings/${id}/application`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(fields)});
+  if(!resp.ok){toast('Save failed — see console');console.error('patchApplication failed',await resp.text());return null}
+  return resp.json();
+}
+
+async function reloadPostings(){
+  try{
+    P=await fetch('/api/postings').then(r=>{if(!r.ok)throw new Error('postings '+r.status);return r.json()});
+    drawAll();
+  }catch(e){toast('Refresh failed — see console');console.error('reloadPostings failed:',e);}
+}
+
+async function loadMetrics(){
+  try{
+    const m=await fetch('/api/metrics').then(r=>{if(!r.ok)throw new Error('metrics '+r.status);return r.json()});
+    $('#metLead').textContent=m.medianLeadTime;
+    $('#metIngested').textContent=m.ingested;
+    $('#metSurfaced').textContent=m.surfaced;
+    $('#metSubmitted').textContent=m.submitted;
+    $('#metReplies').textContent=m.replies;
+    $('#metSpend').textContent='$'+m.scoringSpend.toFixed(2);
+  }catch(e){console.error('loadMetrics failed:',e)}
 }
 
 async function loadCredits(){
@@ -1004,7 +1054,7 @@ document.addEventListener('click',e=>{
   if(e.target.id==='saveBadges'){
     patchSettings({
       score_threshold:+($('#sThresh').value||70), comp_target:+($('#sTarget').value||150000),
-      comp_low_line:+($('#sLow').value||90000), hard_knockouts_only:$('#sHard').checked,
+      comp_low_line:+($('#sLow').value||90000),
     }).then(ok=>{if(ok){toast('Badges & scoring saved');drawQueue()}});
     return}
 });
@@ -1038,6 +1088,7 @@ async function loadLiveData(){
   }
   drawAll();
   loadCredits();
+  loadMetrics();
 }
 loadLiveData();
 </script>

@@ -425,6 +425,74 @@ def test_api_outreach_sent_marks_sent(client, fake_db):
     assert body["sent_at"]
 
 
+# ---- applications ----
+
+
+def test_api_application_patch_requires_auth(client):
+    resp = client.patch("/api/postings/1/application", json={"status": "deferred"})
+    assert resp.status_code == 401
+
+
+def test_api_application_patch_defer_moves_posting_to_watch(client, fake_db):
+    posting_id = _seed_scored_posting(client)
+    resp = client.patch(
+        f"/api/postings/{posting_id}/application", json={"status": "deferred"},
+        auth=(DASH_USER, DASH_PASS),
+    )
+    assert resp.status_code == 200
+    p = client.get("/api/postings", auth=(DASH_USER, DASH_PASS)).json()[0]
+    assert p["stage"] == "watch"
+    assert any(e["event"] == "deferred_by_user" for e in fake_db.events)
+
+
+def test_api_application_patch_reject_logs_reason_and_hides_posting(client, fake_db):
+    posting_id = _seed_scored_posting(client)
+    resp = client.patch(
+        f"/api/postings/{posting_id}/application",
+        json={"status": "rejected", "notes": "wrong seniority"},
+        auth=(DASH_USER, DASH_PASS),
+    )
+    assert resp.status_code == 200
+    p = client.get("/api/postings", auth=(DASH_USER, DASH_PASS)).json()[0]
+    assert p["stage"] == "rejected"
+    reject_events = [e for e in fake_db.events if e["event"] == "rejected_by_user"]
+    assert reject_events and reject_events[0]["payload"]["reason"] == "wrong seniority"
+
+
+def test_api_application_patch_mark_submitted_moves_to_applied(client, fake_db):
+    posting_id = _seed_scored_posting(client)
+    resp = client.patch(
+        f"/api/postings/{posting_id}/application",
+        json={"status": "submitted", "submitted_at": "2026-08-04T12:00:00+00:00"},
+        auth=(DASH_USER, DASH_PASS),
+    )
+    assert resp.status_code == 200
+    p = client.get("/api/postings", auth=(DASH_USER, DASH_PASS)).json()[0]
+    assert p["stage"] == "applied"
+    assert p["app"]["sent"] == "2026-08-04T12:00:00+00:00"
+
+
+# ---- metrics ----
+
+
+def test_api_metrics_requires_auth(client):
+    resp = client.get("/api/metrics")
+    assert resp.status_code == 401
+
+
+def test_api_metrics_returns_real_shape(client, fake_db):
+    _seed_scored_posting(client)
+    resp = client.get("/api/metrics", auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert set(body.keys()) == {
+        "medianLeadTime", "ingested", "surfaced", "submitted", "replies", "scoringSpend",
+    }
+    assert body["ingested"] == 1
+    assert body["submitted"] == 0
+    assert body["medianLeadTime"] == "—"
+
+
 def test_api_postings_reflects_approved_stage_and_outreach_after_assembly(client, fake_db):
     posting_id = _seed_scored_posting(client)
     client.post(f"/api/postings/{posting_id}/assemble", json={}, auth=(DASH_USER, DASH_PASS))

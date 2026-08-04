@@ -21,6 +21,7 @@ from sightline.config import Settings, get_settings
 from sightline.dashboard import postings_to_dashboard_p, search_profiles_to_dashboard, settings_to_cfg_qv
 from sightline.db import SightlineDB
 from sightline.ingest import handle_webhook_event
+from sightline.metrics import compute_metrics
 from sightline.outreach import assemble_outreach
 from sightline.provenance import ProvenanceError
 from sightline.settings_service import preview_query, update_search_profile, update_settings
@@ -168,6 +169,11 @@ def api_credits(
     }
 
 
+@app.get("/api/metrics", dependencies=[Depends(require_auth)])
+def api_metrics(db: SightlineDB = Depends(get_db)) -> dict:
+    return compute_metrics(db, db.get_settings())
+
+
 @app.post("/api/postings/{posting_id}/assemble", dependencies=[Depends(require_auth)])
 def api_assemble(
     posting_id: int,
@@ -232,6 +238,24 @@ def api_outreach_sent(
         return db.mark_outreach_sent(posting_id, body.get("channel") or "linkedin_message")
     except LookupError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
+
+
+@app.patch("/api/postings/{posting_id}/application", dependencies=[Depends(require_auth)])
+def api_application_patch(
+    posting_id: int, fields: dict[str, Any], db: SightlineDB = Depends(get_db)
+) -> dict:
+    """Defer, Reject, Mark submitted, the status dropdown, notes, and
+    Record final on the dashboard all funnel through here — one upsert per
+    posting. status='rejected'/'deferred' also logs an event: CLAUDE.md
+    calls a reject "rubric training data," and this is where that reason
+    actually gets captured instead of only appearing in a toast."""
+    updated = db.upsert_application({**fields, "posting_id": posting_id})
+    if fields.get("status") in ("rejected", "deferred"):
+        db.log_event(
+            entity_type="posting", entity_id=posting_id, event=f"{fields['status']}_by_user",
+            payload={"reason": fields.get("notes")},
+        )
+    return updated
 
 
 @app.post("/webhooks/theirstack")
