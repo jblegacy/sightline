@@ -139,6 +139,22 @@ BULLET LIBRARY (for evidence_overlap and matched_bullet_refs — pick only from 
 {_format_bullets(bullets)}"""
 
 
+_VALID_VARIANTS = {"engineer", "leadership"}
+
+
+def _normalize_variant(raw: Any) -> str | None:
+    """The schema declares suggested_variant a plain string enum, but that's
+    not enforced on generation — seen live: Haiku sometimes wraps it as a
+    list (['leadership']) or returns junk ('<UNKNOWN>', 'null', ''). Stored
+    verbatim, a bad value doesn't fail loudly; it sits in the `scores` table
+    until assembly hits ValueError("unknown variant ...") when the user
+    clicks Approve, only surfacing once. Better to normalize it here, once,
+    where the fix reaches every posting instead of every read site."""
+    if isinstance(raw, list):
+        raw = raw[0] if raw else None
+    return raw if raw in _VALID_VARIANTS else None
+
+
 def score_posting(
     client: AnthropicClient,
     posting: dict[str, Any],
@@ -174,7 +190,7 @@ def score_posting(
         "unmet_requirements": result.get("unmet_requirements") or [],
         "knockouts": result.get("knockouts") or [],
         "coding_interview_signals": result.get("coding_interview_signals") or [],
-        "suggested_variant": result.get("suggested_variant"),
+        "suggested_variant": _normalize_variant(result.get("suggested_variant")),
         "reports_to": result.get("reports_to") or None,
         "named_contacts": result.get("named_contacts") or [],
         "target_titles": result.get("target_titles") or [],

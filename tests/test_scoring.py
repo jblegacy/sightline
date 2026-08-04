@@ -79,6 +79,27 @@ def test_score_posting_empty_reports_to_becomes_none():
     assert row["reports_to"] is None
 
 
+def test_score_posting_unwraps_list_wrapped_suggested_variant():
+    # Found live: Haiku returned suggested_variant as ["leadership"] instead
+    # of "leadership" despite the schema declaring a plain string enum.
+    # Stored verbatim, this 400s assembly with "unknown variant" the moment
+    # the user clicks Approve — 30 of 105 real scores had this exact defect.
+    result = {**FAKE_MODEL_RESULT, "suggested_variant": ["leadership"]}
+    fake_client = MagicMock()
+    fake_client.structured_call.return_value = (result, 0.001)
+    row = score_posting(fake_client, SAMPLE_POSTING, SAMPLE_BULLETS)
+    assert row["suggested_variant"] == "leadership"
+
+
+def test_score_posting_discards_invalid_suggested_variant():
+    for junk in ("", "<UNKNOWN>", "null", "not-a-real-variant", [], None):
+        result = {**FAKE_MODEL_RESULT, "suggested_variant": junk}
+        fake_client = MagicMock()
+        fake_client.structured_call.return_value = (result, 0.001)
+        row = score_posting(fake_client, SAMPLE_POSTING, SAMPLE_BULLETS)
+        assert row["suggested_variant"] is None, f"junk value {junk!r} should normalize to None"
+
+
 def test_score_posting_survives_missing_extraction_field():
     # The schema marks coding_interview_signals (and friends) required, but
     # tool-use generation completeness isn't guaranteed — seen live: Haiku

@@ -115,6 +115,13 @@ def posting_row_to_p(row: dict[str, Any], co_count: int) -> dict[str, Any] | Non
     else:
         app = None
 
+    # A human override corrects the *effective* score (queue/watch, display)
+    # without touching the AI's own total — that stays the calibration
+    # baseline toward a future rubric_version revision, not something a
+    # correction silently erases.
+    override_total = score.get("human_override_total")
+    effective_score = override_total if override_total is not None else score["total"]
+
     return {
         "id": row["id"],
         "app": app,
@@ -128,7 +135,12 @@ def posting_row_to_p(row: dict[str, Any], co_count: int) -> dict[str, Any] | Non
         "compSrc": row.get("comp_source") or "absent",
         "coCount": co_count,
         "ko": score.get("knockouts") or [],
-        "score": score["total"],
+        "score": effective_score,
+        "aiScore": score["total"],
+        "scoreOverride": (
+            {"total": override_total, "reason": score.get("human_override_reason")}
+            if override_total is not None else None
+        ),
         "d": _dimensions_array(score["dimensions"]),
         "v": _VARIANT_CODE.get(score.get("suggested_variant"), "eng"),
         "stage": "queue",  # placeholder — postings_to_dashboard_p sets the real value below
