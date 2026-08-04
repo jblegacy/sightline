@@ -6,7 +6,7 @@ from sightline.theirstack import (
     CreditsExhausted,
     TheirStackClient,
     TheirStackError,
-    build_filters_from_settings,
+    build_filters_for_profile,
     verify_webhook_signature,
 )
 
@@ -55,67 +55,73 @@ def test_free_count_rejects_missing_required_filter():
         client.free_count({"remote": True})
 
 
-# ---- settings -> filters mapping ----
+# ---- profile + settings -> filters mapping ----
 
 
-def test_build_filters_from_settings_no_salary_filter():
-    settings = {"title_include": ["ai engineer"], "title_exclude": []}
-    filters = build_filters_from_settings(settings)
+def test_build_filters_for_profile_no_salary_filter():
+    profile = {"title_include": ["workflow automation"], "title_exclude": []}
+    filters = build_filters_for_profile(profile, {})
     assert "min_salary_usd" not in filters
     assert "max_salary_usd" not in filters
 
 
-def test_build_filters_from_settings_open_only_true_by_default():
-    settings = {"title_include": ["ai engineer"]}
-    filters = build_filters_from_settings(settings)
+def test_build_filters_for_profile_uses_profile_title_lists_not_settings():
+    profile = {"title_include": ["workflow automation"], "title_exclude": ["ai engineer"]}
+    filters = build_filters_for_profile(profile, {})
+    assert filters["job_title_or"] == ["workflow automation"]
+    assert filters["job_title_not"] == ["ai engineer"]
+
+
+def test_build_filters_for_profile_open_only_true_by_default():
+    profile = {"title_include": ["workflow automation"]}
+    filters = build_filters_for_profile(profile, {})
     assert filters["is_closed"] is False
 
 
-def test_build_filters_from_settings_open_only_false_omits_is_closed():
-    settings = {"title_include": ["ai engineer"], "open_only": False}
-    filters = build_filters_from_settings(settings)
+def test_build_filters_for_profile_open_only_false_omits_is_closed():
+    profile = {"title_include": ["workflow automation"]}
+    filters = build_filters_for_profile(profile, {"open_only": False})
     assert "is_closed" not in filters
 
 
-def test_build_filters_from_settings_satisfies_required_filter_guard():
+def test_build_filters_for_profile_satisfies_required_filter_guard():
     from sightline.theirstack import _require_dedup_filter
 
-    settings = {"title_include": ["ai engineer"]}
-    filters = build_filters_from_settings(settings)
+    profile = {"title_include": ["workflow automation"]}
+    filters = build_filters_for_profile(profile, {})
     _require_dedup_filter(filters)  # should not raise
 
 
-def test_build_filters_from_settings_seniority_included_when_set():
-    settings = {"title_include": ["ai engineer"], "seniority": ["senior", "staff"]}
-    filters = build_filters_from_settings(settings)
+def test_build_filters_for_profile_seniority_from_settings_included_when_set():
+    profile = {"title_include": ["workflow automation"]}
+    filters = build_filters_for_profile(profile, {"seniority": ["senior", "staff"]})
     assert filters["job_seniority_or"] == ["senior", "staff"]
 
 
-def test_build_filters_from_settings_seniority_omitted_when_empty():
-    settings = {"title_include": ["ai engineer"], "seniority": []}
-    filters = build_filters_from_settings(settings)
+def test_build_filters_for_profile_seniority_omitted_when_empty():
+    profile = {"title_include": ["workflow automation"]}
+    filters = build_filters_for_profile(profile, {"seniority": []})
     assert "job_seniority_or" not in filters
 
 
-def test_build_filters_from_settings_source_exclude_included_when_set():
-    settings = {"title_include": ["ai engineer"], "source_exclude": ["linkedin.com"]}
-    filters = build_filters_from_settings(settings)
+def test_build_filters_for_profile_source_exclude_from_settings_included_when_set():
+    profile = {"title_include": ["workflow automation"]}
+    filters = build_filters_for_profile(profile, {"source_exclude": ["linkedin.com"]})
     assert filters["url_domain_not"] == ["linkedin.com"]
 
 
-def test_build_filters_from_settings_salary_filter_off_by_default_even_with_values_set():
-    settings = {"title_include": ["ai engineer"], "fetch_salary_min": 90000, "fetch_salary_max": 200000}
-    filters = build_filters_from_settings(settings)
+def test_build_filters_for_profile_salary_filter_off_by_default_even_with_values_set():
+    profile = {"title_include": ["workflow automation"]}
+    settings = {"fetch_salary_min": 90000, "fetch_salary_max": 200000}
+    filters = build_filters_for_profile(profile, settings)
     assert "min_salary_usd" not in filters
     assert "max_salary_usd" not in filters
 
 
-def test_build_filters_from_settings_salary_filter_applied_when_explicitly_enabled():
-    settings = {
-        "title_include": ["ai engineer"], "fetch_salary_filter": True,
-        "fetch_salary_min": 90000, "fetch_salary_max": 200000,
-    }
-    filters = build_filters_from_settings(settings)
+def test_build_filters_for_profile_salary_filter_applied_when_explicitly_enabled():
+    profile = {"title_include": ["workflow automation"]}
+    settings = {"fetch_salary_filter": True, "fetch_salary_min": 90000, "fetch_salary_max": 200000}
+    filters = build_filters_for_profile(profile, settings)
     assert filters["min_salary_usd"] == 90000
     assert filters["max_salary_usd"] == 200000
 
@@ -225,13 +231,17 @@ def test_upsert_webhook_listen_from_now_sets_listening_start_time():
 
 
 @respx.mock
-def test_find_webhook_matches_by_url_not_name():
+def test_find_webhook_for_search_matches_by_search_id():
     respx.get(f"{BASE}/v0/webhooks").mock(
         return_value=httpx.Response(
-            200, json=[{"id": 1, "url": "https://example.com/webhooks/theirstack", "search_id": 42}]
+            200,
+            json=[
+                {"id": 1, "url": "https://example.com/webhooks/theirstack", "search_id": 42},
+                {"id": 2, "url": "https://example.com/webhooks/theirstack", "search_id": 43},
+            ],
         )
     )
     client = TheirStackClient(api_key="fake")
-    found = client.find_webhook("https://example.com/webhooks/theirstack")
+    found = client.find_webhook_for_search(43)
     assert found is not None
-    assert found["id"] == 1
+    assert found["id"] == 2

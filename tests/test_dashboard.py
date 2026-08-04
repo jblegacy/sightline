@@ -19,6 +19,7 @@ SAMPLE_SCORE = {
     "matched_bullet_ids": ["BL-002"],
     "unmet_requirements": ["Named enterprise stack"],
     "knockouts": ["5+ years required"],
+    "coding_interview_signals": ["system design interview"],
     "suggested_variant": "leadership",
     "reports_to": "VP Engineering",
     "named_contacts": [{"name": "Jane Doe", "title": "CTO", "context": "named in JD"}],
@@ -71,6 +72,7 @@ def test_posting_row_to_p_maps_core_fields():
     assert p["gaps"] == ["Named enterprise stack"]
     assert p["rt"] == "VP Engineering"
     assert p["nc"] == [{"n": "Jane Doe", "t": "CTO"}]
+    assert p["ci"] == ["system design interview"]
 
 
 def test_posting_row_to_p_returns_none_without_a_score():
@@ -103,12 +105,28 @@ def test_postings_to_dashboard_p_counts_roles_per_company():
 
 
 def test_settings_to_cfg_qv_shape():
-    settings = {
-        "title_include": ["ai engineer"], "title_exclude": ["recruiter"],
-        "queue_min_score": 55, "score_threshold": 70,
-    }
+    settings = {"queue_min_score": 55, "score_threshold": 70}
     out = settings_to_cfg_qv(settings)
-    assert out["cfg"]["inc"] == ["ai engineer"]
-    assert out["cfg"]["exc"] == ["recruiter"]
     assert out["qv"]["score"] == 55
     assert out["scoreThreshold"] == 70
+    assert "cfg" not in out  # title lists moved to search_profiles
+
+
+def test_search_profiles_to_dashboard_shape():
+    from sightline.dashboard import search_profiles_to_dashboard
+
+    profiles = [
+        {"id": "automation", "label": "AI / Workflow Automation",
+         "title_include": ["workflow automation"], "title_exclude": ["ai engineer"],
+         "resume_variant": "engineer", "budget_share": 0.6},
+        {"id": "cpg", "label": "CPG Operations",
+         "title_include": ["director of operations"], "title_exclude": ["forklift"],
+         "resume_variant": "leadership", "budget_share": 0.4},
+    ]
+    out = search_profiles_to_dashboard(profiles)
+    assert out[0] == {
+        "id": "automation", "label": "AI / Workflow Automation",
+        "inc": ["workflow automation"], "exc": ["ai engineer"],
+        "variant": "engineer", "budgetShare": 0.6,
+    }
+    assert out[1]["id"] == "cpg"

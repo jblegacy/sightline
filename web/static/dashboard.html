@@ -295,17 +295,29 @@ table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     <h2>Criteria</h2>
     <p class="hint">Two layers. What you fetch costs credits and is gone once spent. What you show is free — the data is already paid for.</p>
 
+    <div class="panel">
+      <h3>Search profile</h3>
+      <p class="ph">Two separate saved searches with disjoint title lists. Each maps to a resume variant and its own share of the credit budget. Title lists must stay disjoint — there's no sequencing to dedupe an overlap the way a nightly poll could, since both profiles' webhooks fire independently.</p>
+      <div class="chips-f" id="profSel"></div>
+      <div class="row2">
+        <div class="fld"><label>Resume variant</label><input type="text" id="pVar" value="" disabled></div>
+        <div class="fld"><label>Share of monthly credits</label><input type="text" id="pShare" value=""></div>
+      </div>
+    </div>
+
     <div class="seclabel"><h3>Fetch criteria</h3><span class="cost paid">COSTS CREDITS</span>
       <p>Narrows what comes back from TheirStack. Every job returned is a credit, kept or discarded.</p></div>
 
     <div class="panel">
-      <h3>Job titles</h3>
+      <h3>Job titles — active profile</h3>
       <p class="ph">One query with an OR'd list, not several overlapping queries — a job matching two queries is charged twice.</p>
       <div class="fld"><label>Include — matches any</label>
         <div class="taginput" id="tiInc"><input type="text" placeholder="add a title and press Enter"></div>
         <div class="note">Word-order independent. "automation engineer" matches "Engineer, Automation".</div></div>
       <div class="fld"><label>Exclude</label>
         <div class="taginput" id="tiExc"><input type="text" placeholder="add an exclusion"></div></div>
+      <button class="btn go" id="saveProfileTitles" style="margin-top:6px">Save titles for this profile</button>
+      <div class="note">Saving updates this profile's saved search on TheirStack — nothing here is enforced until saved.</div>
     </div>
 
     <div class="panel">
@@ -331,8 +343,8 @@ table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       </div>
       <div class="fld"><label>Seniority</label><input type="text" id="fSen" value="mid_level, senior, staff"><div class="note">Leave blank for all</div></div>
       <div class="fld"><label>Exclude sources</label><input type="text" id="fSrc" placeholder="e.g. linkedin.com"></div>
-      <button class="btn go" id="saveFetchCriteria" style="margin-top:6px">Save fetch criteria</button>
-      <div class="note">Saving also updates the saved search TheirStack uses to send webhook events — nothing here is enforced until saved.</div>
+      <button class="btn go" id="saveFetchCriteria" style="margin-top:6px">Save scope</button>
+      <div class="note">Shared across both profiles. Saving updates both saved searches on TheirStack — nothing here is enforced until saved.</div>
     </div>
 
     <div class="panel">
@@ -477,6 +489,7 @@ function rowHTML(p){
       <div>
         <section><h4>Keywords to mirror</h4><div class="chips">${p.kw.map(k=>`<span class="chip">${esc(k)}</span>`).join('')}</div></section>
         <section><h4>Gaps to prepare for</h4><div class="chips">${p.gaps.map(g=>`<span class="chip gap">${esc(g)}</span>`).join('')||'<span class="chip">none flagged</span>'}</div></section>
+        ${p.ci&&p.ci.length?`<section><h4>Coding-interview signals</h4><p class="hint" style="margin:0 0 6px">Title alone is unreliable — the JD itself reads like it screens for CS fundamentals.</p><div class="chips">${p.ci.map(c=>`<span class="chip gap">${esc(c)}</span>`).join('')}</div></section>`:''}
         <section><h4>Brief</h4><p style="margin:0;font-size:13px">${esc(p.brief)}</p></section>
         <section><h4>Knockouts flagged</h4>${p.ko.length?`<ul class="kolist">${p.ko.map(k=>`<li>${esc(k)}</li>`).join('')}</ul>`:'<p style="margin:0;font-size:13px;color:var(--auto)">None — clean description.</p>'}</section>
         <section><h4>Reporting line extracted</h4><p style="margin:0;font-size:13px">${esc(p.rt||'Not stated in posting')}</p></section>
@@ -786,6 +799,8 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')$('#mask').classList
 // ---------------- settings ----------------
 // Real defaults until /api/settings responds — loadLiveData() below overwrites these.
 let QV={salMin:0,salMax:500000,score:55,age:21,ko:9,noSal:true};
+let PROFILES=[];
+let ACTIVE='automation';
 let CFG={inc:[],exc:[]};
 let SCORE_THRESHOLD=70;
 let RAW_SETTINGS={};
@@ -828,8 +843,19 @@ async function patchSettings(fields){
   const resp=await fetch('/api/settings',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(fields)});
   if(!resp.ok){toast('Save failed — see console');console.error('patchSettings failed',await resp.text());return null}
   const body=await resp.json();
-  RAW_SETTINGS=body.raw; QV=body.qv; CFG=body.cfg; SCORE_THRESHOLD=body.scoreThreshold;
+  RAW_SETTINGS=body.raw; QV=body.qv; SCORE_THRESHOLD=body.scoreThreshold;
+  if(body.profiles){PROFILES=body.profiles;CFG=PROFILES.find(p=>p.id===ACTIVE)||PROFILES[0]||CFG;}
   return body;
+}
+
+async function patchSearchProfile(profileId,fields){
+  const resp=await fetch(`/api/search-profiles/${profileId}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(fields)});
+  if(!resp.ok){toast('Save failed — see console');console.error('patchSearchProfile failed',await resp.text());return null}
+  const updated=await resp.json();
+  const i=PROFILES.findIndex(p=>p.id===profileId);
+  if(i>=0)PROFILES[i]=updated; else PROFILES.push(updated);
+  if(profileId===ACTIVE)CFG=updated;
+  return updated;
 }
 
 async function loadCredits(){
@@ -846,7 +872,7 @@ function drawTags(){
   [['tiInc','inc',''],['tiExc','exc','neg']].forEach(([id,key,cls])=>{
     const box=$('#'+id), inp=box.querySelector('input');
     box.querySelectorAll('.tg').forEach(t=>t.remove());
-    CFG[key].forEach((t,i)=>{
+    (CFG[key]||[]).forEach((t,i)=>{
       const el=document.createElement('span');
       el.className='tg '+cls;
       el.innerHTML=`${esc(t)}<button data-rm="${key}:${i}" aria-label="remove">\u00d7</button>`;
@@ -855,9 +881,24 @@ function drawTags(){
   });
 }
 
-function currentFetchCriteriaFields(){
+function drawProfileChips(){
+  const box=$('#profSel');
+  if(!box)return;
+  box.innerHTML=PROFILES.map(p=>`<button data-p="${p.id}" aria-pressed="${p.id===ACTIVE}">${esc(p.label)}</button>`).join('');
+}
+
+function setActiveProfile(id){
+  ACTIVE=id;
+  CFG=PROFILES.find(p=>p.id===id)||{inc:[],exc:[]};
+  $('#pVar').value=CFG.variant==='leadership'?'Operations Leadership':'Workflow Automation';
+  $('#pShare').value=CFG.budgetShare!=null?Math.round(CFG.budgetShare*100)+'%':'';
+  drawProfileChips();
+  drawTags();
+  $('#prevOut').style.display='none';
+}
+
+function currentScopeFields(){
   return {
-    title_include: CFG.inc, title_exclude: CFG.exc,
     fetch_salary_filter: $('#fSalOn').checked,
     fetch_salary_min: +($('#fSalMin').value||0)||null,
     fetch_salary_max: +($('#fSalMax').value||0)||null,
@@ -871,7 +912,8 @@ function currentFetchCriteriaFields(){
 async function preview(){
   const btn=$('#doPrev'); btn.disabled=true; btn.textContent='Running preview\u2026';
   try{
-    const result=await fetch('/api/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(currentFetchCriteriaFields())}).then(r=>{
+    const body={profile_id:ACTIVE, title_include:CFG.inc, title_exclude:CFG.exc, ...currentScopeFields()};
+    const result=await fetch('/api/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>{
       if(!r.ok)throw new Error('preview '+r.status); return r.json();
     });
     const day=result.day, week=result.week, backlog=result.backlog, sample=result.sample;
@@ -919,6 +961,8 @@ document.addEventListener('keydown',e=>{
 document.addEventListener('click',e=>{
   const rm=e.target.dataset.rm;
   if(rm){const [k,i]=rm.split(':');CFG[k].splice(+i,1);drawTags();return}
+  const ps=e.target.closest('#profSel button');
+  if(ps){setActiveProfile(ps.dataset.p);return}
   if(e.target.id==='doPrev'){preview();return}
   const pt=e.target.closest('.tabs2 button');
   if(pt){document.querySelectorAll('.tabs2 button').forEach(x=>x.setAttribute('aria-selected',x===pt));
@@ -941,8 +985,12 @@ document.addEventListener('click',e=>{
     const on=e.target.checked, row=$('#fSalRow');
     row.style.opacity=on?'1':'.4'; row.style.pointerEvents=on?'auto':'none';
     return}
+  if(e.target.id==='saveProfileTitles'){
+    patchSearchProfile(ACTIVE,{title_include:CFG.inc,title_exclude:CFG.exc})
+      .then(ok=>{if(ok)toast('Titles saved \u2014 synced to TheirStack')});
+    return}
   if(e.target.id==='saveFetchCriteria'){
-    patchSettings(currentFetchCriteriaFields()).then(ok=>{if(ok)toast('Fetch criteria saved \u2014 synced to TheirStack')});
+    patchSettings(currentScopeFields()).then(ok=>{if(ok)toast('Scope saved \u2014 synced to both profiles')});
     return}
   if(e.target.id==='saveCreditBudget'){
     patchSettings({monthly_credits:+($('#cMonth').value||200), per_run_cap:+($('#cRun').value||120)})
@@ -971,7 +1019,11 @@ async function loadLiveData(){
       fetch('/api/settings').then(r=>{if(!r.ok)throw new Error('settings '+r.status);return r.json()}),
     ]);
     P=postings;
-    QV=settings.qv; CFG=settings.cfg; SCORE_THRESHOLD=settings.scoreThreshold;
+    QV=settings.qv; SCORE_THRESHOLD=settings.scoreThreshold;
+    PROFILES=settings.profiles||[];
+    ACTIVE=PROFILES[0]?.id||'automation';
+    CFG=PROFILES.find(p=>p.id===ACTIVE)||{inc:[],exc:[]};
+    setActiveProfile(ACTIVE);
     populateCriteriaForm(settings.raw);
     const queueCt=P.filter(p=>p.stage==='queue').length, watchCt=P.filter(p=>p.stage==='watch').length;
     runinfo.textContent=`${P.length} scored · ${queueCt} in queue (≥${SCORE_THRESHOLD}) · ${watchCt} on watchlist`;

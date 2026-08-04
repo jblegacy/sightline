@@ -24,7 +24,24 @@ from sightline.scoring import score_posting
 from sightline.theirstack import TheirStackClient
 
 
-def job_to_posting(job: dict[str, Any], company_id: int) -> dict[str, Any]:
+def classify_search_profile(title: str, profiles: list[dict[str, Any]]) -> str | None:
+    """Best-effort match of a job title against each profile's title lists,
+    for traceability (`postings.search_profile_id`) — not a filter. The real
+    filtering already happened server-side in TheirStack's own matching;
+    this is a simpler approximation of the same word lists, only used to
+    record which profile likely fetched it."""
+    t = title.lower()
+    for profile in profiles:
+        if any(term in t for term in profile.get("title_exclude") or []):
+            continue
+        if any(term in t for term in profile["title_include"]):
+            return profile["id"]
+    return None
+
+
+def job_to_posting(
+    job: dict[str, Any], company_id: int, search_profile_id: str | None = None
+) -> dict[str, Any]:
     """Map a TheirStack job object (search response or job.new payload — same
     schema) to a `postings` row. See docs/THEIRSTACK_API_REFERENCE.md §7."""
     comp_min = job.get("min_annual_salary_usd")
@@ -48,11 +65,16 @@ def job_to_posting(job: dict[str, Any], company_id: int) -> dict[str, Any]:
         "jd_text": job.get("description"),
         "raw": job,
         "status": "new",
+        "search_profile_id": search_profile_id,
     }
 
 
 def handle_job_new(
-    db: SightlineDB, anthropic: AnthropicClient, settings: dict[str, Any], job: dict[str, Any]
+    db: SightlineDB,
+    anthropic: AnthropicClient,
+    settings: dict[str, Any],
+    profiles: list[dict[str, Any]],
+    job: dict[str, Any],
 ) -> dict[str, Any]:
     """1 credit was already spent delivering this event — log it regardless of
     what happens next; the credit ledger reflects real billing, not our DB state.
@@ -80,7 +102,8 @@ def handle_job_new(
         name=job.get("company") or job.get("company_object", {}).get("name") or "Unknown",
         domain=job.get("company_domain") or job.get("company_object", {}).get("domain"),
     )
-    posting = db.upsert_posting(job_to_posting(job, company_id))
+    search_profile_id = classify_search_profile(job["job_title"], profiles)
+    posting = db.upsert_posting(job_to_posting(job, company_id, search_profile_id))
     db.log_event(
         entity_type="posting",
         event="ingested",
@@ -134,12 +157,15 @@ def handle_webhook_event(
     db: SightlineDB,
     anthropic: AnthropicClient,
     theirstack: TheirStackClient,
-    webhook_url: str,
     event: dict[str, Any],
 ) -> dict[str, Any]:
     """Dispatch on the envelope's `type`. Unknown/unsubscribed types are logged
     and ignored rather than erroring — we only ever subscribe to job.new and
     job.closed, but a stray company.new shouldn't take the endpoint down.
+
+    One endpoint serves both search profiles' webhooks — the envelope
+    doesn't distinguish which profile matched, so job.new classifies it
+    itself from the job title (see classify_search_profile).
 
     Runs the credit circuit breaker after any event that cost a credit. This
     can only stop *future* deliveries — the credit for the event we just
@@ -149,7 +175,8 @@ def handle_webhook_event(
     settings = db.get_settings()
 
     if event_type == "job.new":
-        posting = handle_job_new(db, anthropic, settings, payload)
+        profiles = db.get_search_profiles()
+        posting = handle_job_new(db, anthropic, settings, profiles, payload)
         result: dict[str, Any] = {"ok": True, "type": event_type, "posting_id": posting["id"]}
     elif event_type == "job.closed":
         handle_job_closed(db, payload)
@@ -158,7 +185,5 @@ def handle_webhook_event(
         db.log_event(entity_type="webhook", event="unhandled_event_type", payload={"type": event_type})
         return {"ok": True, "type": event_type, "ignored": True}
 
-    check_and_enforce_budget(
-        theirstack, db, webhook_url, monthly_credit_budget=settings.get("monthly_credits", 200)
-    )
+    check_and_enforce_budget(theirstack, db, monthly_credit_budget=settings.get("monthly_credits", 200))
     return result

@@ -17,13 +17,13 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sightline.anthropic_client import AnthropicClient
 from sightline.assembly import assemble, variant_detail
 from sightline.config import Settings, get_settings
-from sightline.dashboard import postings_to_dashboard_p, settings_to_cfg_qv
+from sightline.dashboard import postings_to_dashboard_p, search_profiles_to_dashboard, settings_to_cfg_qv
 from sightline.db import SightlineDB
 from sightline.ingest import handle_webhook_event
 from sightline.outreach import assemble_outreach
 from sightline.provenance import ProvenanceError
-from sightline.settings_service import preview_query, update_settings
-from sightline.theirstack import TheirStackClient, build_filters_from_settings, verify_webhook_signature
+from sightline.settings_service import preview_query, update_search_profile, update_settings
+from sightline.theirstack import TheirStackClient, build_filters_for_profile, verify_webhook_signature
 
 logger = logging.getLogger("sightline.web")
 
@@ -95,7 +95,8 @@ def api_postings(db: SightlineDB = Depends(get_db)) -> list[dict]:
 @app.get("/api/settings", dependencies=[Depends(require_auth)])
 def api_settings(db: SightlineDB = Depends(get_db)) -> dict:
     raw = db.get_settings()
-    return {"raw": raw, **settings_to_cfg_qv(raw)}
+    profiles = db.get_search_profiles()
+    return {"raw": raw, "profiles": search_profiles_to_dashboard(profiles), **settings_to_cfg_qv(raw)}
 
 
 @app.patch("/api/settings", dependencies=[Depends(require_auth)])
@@ -104,25 +105,50 @@ def api_settings_patch(
     db: SightlineDB = Depends(get_db),
     theirstack: TheirStackClient = Depends(get_theirstack),
 ) -> dict:
-    """Persists to `settings`, and — only for fields that affect what
-    TheirStack actually sends us — pushes the change to the saved search too.
-    See sightline/settings_service.py."""
+    """Persists shared fetch/queue criteria to `settings`, and — for fields
+    that affect what TheirStack sends us — re-syncs both search profiles'
+    saved searches. See sightline/settings_service.py. Title lists live on
+    search_profiles now; use PATCH /api/search-profiles/{id} for those."""
     updated = update_settings(db, theirstack, fields)
-    return {"raw": updated, **settings_to_cfg_qv(updated)}
+    profiles = db.get_search_profiles()
+    return {"raw": updated, "profiles": search_profiles_to_dashboard(profiles), **settings_to_cfg_qv(updated)}
+
+
+@app.patch("/api/search-profiles/{profile_id}", dependencies=[Depends(require_auth)])
+def api_search_profile_patch(
+    profile_id: str,
+    fields: dict[str, Any],
+    db: SightlineDB = Depends(get_db),
+    theirstack: TheirStackClient = Depends(get_theirstack),
+) -> dict:
+    """Persists one profile's title lists (or budget share), and re-syncs
+    that profile's saved search if the title lists changed."""
+    try:
+        updated = update_search_profile(db, theirstack, profile_id, fields)
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    return search_profiles_to_dashboard([updated])[0]
 
 
 @app.post("/api/preview", dependencies=[Depends(require_auth)])
 def api_preview(
-    overrides: dict[str, Any],
+    body: dict[str, Any],
     db: SightlineDB = Depends(get_db),
     theirstack: TheirStackClient = Depends(get_theirstack),
 ) -> dict:
     """Real TheirStack free-count/preview numbers for the form's current
     (possibly unsaved) values — 0 credits, safe to call on every keystroke's
-    worth of tuning. `overrides` merges over the saved settings row so
-    Preview reflects what's in the form, not just what's already saved."""
-    merged = {**db.get_settings(), **overrides}
-    filters = build_filters_from_settings(merged)
+    worth of tuning. `body.profile_id` selects which profile's title lists
+    to preview; any other fields merge as overrides over the saved profile
+    and settings rows so Preview reflects what's in the form, not just
+    what's already saved."""
+    profile_id = body.get("profile_id", "automation")
+    stored_profiles = {p["id"]: p for p in db.get_search_profiles()}
+    if profile_id not in stored_profiles:
+        raise HTTPException(status_code=400, detail=f"unknown profile_id {profile_id!r}")
+    profile = {**stored_profiles[profile_id], **body}
+    settings = {**db.get_settings(), **body}
+    filters = build_filters_for_profile(profile, settings)
     return preview_query(theirstack, filters)
 
 
@@ -235,9 +261,7 @@ async def theirstack_webhook(
     # duplicate deliveries as harmless (upsert-on-external_id is idempotent) —
     # all per docs/THEIRSTACK_API_REFERENCE.md §8's delivery requirements.
     try:
-        result = handle_webhook_event(
-            db, anthropic, theirstack, settings.theirstack_webhook_url or "", event
-        )
+        result = handle_webhook_event(db, anthropic, theirstack, event)
     except Exception:
         logger.exception(
             "failed to process webhook event id=%s type=%s", event.get("id"), event.get("type")

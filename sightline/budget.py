@@ -17,14 +17,17 @@ from typing import Any
 from sightline.db import SightlineDB
 from sightline.theirstack import TheirStackClient
 
-SAVED_SEARCH_NAME = "sightline"
+SEARCH_PROFILE_IDS = ("automation", "cpg")
 SAFETY_MARGIN = 0.9  # trip at 90% of budget, not 100% — leaves buffer for the check's own lag
+
+
+def saved_search_name(profile_id: str) -> str:
+    return f"sightline-{profile_id}"
 
 
 def check_and_enforce_budget(
     theirstack: TheirStackClient,
     db: SightlineDB,
-    webhook_url: str,
     monthly_credit_budget: int,
 ) -> dict[str, Any]:
     """Call after processing any event that consumed a credit. Free to call —
@@ -37,13 +40,15 @@ def check_and_enforce_budget(
     if used < threshold:
         return {"tripped": False, "used_api_credits": used, "threshold": threshold}
 
-    saved_search = theirstack.find_saved_search(SAVED_SEARCH_NAME)
-    if saved_search and saved_search.get("is_alert_active"):
-        theirstack.set_saved_search_active(saved_search["id"], False)
-
-    webhook = theirstack.find_webhook(webhook_url)
-    if webhook and webhook.get("is_active"):
-        theirstack.set_webhook_active(webhook["id"], False)
+    for profile_id in SEARCH_PROFILE_IDS:
+        saved_search = theirstack.find_saved_search(saved_search_name(profile_id))
+        if not saved_search:
+            continue
+        if saved_search.get("is_alert_active"):
+            theirstack.set_saved_search_active(saved_search["id"], False)
+        webhook = theirstack.find_webhook_for_search(saved_search["id"])
+        if webhook and webhook.get("is_active"):
+            theirstack.set_webhook_active(webhook["id"], False)
 
     db.log_event(
         entity_type="budget",

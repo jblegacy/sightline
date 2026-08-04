@@ -27,6 +27,7 @@ FAKE_MODEL_RESULT = {
     "matched_bullet_refs": ["BL-014"],
     "unmet_requirements": ["Named enterprise stack experience"],
     "knockouts": ["5+ years required"],
+    "coding_interview_signals": [],
     "suggested_variant": "engineer",
     "reports_to": "VP Engineering",
     "named_contacts": [],
@@ -67,6 +68,7 @@ def test_score_posting_maps_model_output_to_scores_row():
     assert row["unmet_requirements"] == ["Named enterprise stack experience"]
     assert row["reports_to"] == "VP Engineering"
     assert row["cost_usd"] == 0.00123
+    assert row["coding_interview_signals"] == []
 
 
 def test_score_posting_empty_reports_to_becomes_none():

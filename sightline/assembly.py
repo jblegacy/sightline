@@ -91,47 +91,49 @@ VARIANT_CONTENT: dict[str, dict[str, Any]] = {
         ],
     },
     "engineer": {
-        "headline": "AI & Automation Engineer  |  Workflow Automation  |  Systems Integration",
+        "headline": "Workflow Automation & Business Systems  |  AI Enablement  |  Operations Technology",
         "summary": (
-            "Builds and ships AI automation systems end to end — specification through "
-            "production. Designed and deployed an autonomous decision-automation platform "
-            "running live in production across 68 API endpoints with ensemble modeling and "
-            "automated risk controls, plus an AI platform for small-business owners currently "
-            "in beta. Twelve years of operations experience underneath the technical work, "
-            "which means the automations get built against how a business actually runs rather "
-            "than against an idealized process diagram. Seeking hands-on build work as an "
-            "individual contributor rather than people management. Remote-first."
+            "Operations leader who automates the work. Twelve years running business "
+            "operations — finance, logistics, compliance, reporting — now paired with "
+            "hands-on AI tooling: specifies and ships production automation by directing AI "
+            "coding agents, including an autonomous decision-automation platform running live "
+            "today. Builds against how a business actually runs rather than against an "
+            "idealized process diagram. Seeking hands-on individual-contributor work rather "
+            "than people management. Remote-first."
         ),
         "competencies": (
-            "Workflow Automation  •  AI Agent Orchestration  •  API & Systems "
-            "Integration  •  Internal Tooling  •  Process Automation  •  Data "
-            "Pipelines  •  Requirements Analysis  •  Business Process Mapping  •  "
-            "Production Deployment & Monitoring  •  Technical Documentation"
+            "Workflow Automation  •  Business Process Automation  •  Systems "
+            "Integration  •  AI Enablement & Adoption  •  Internal Tooling  •  "
+            "Requirements Analysis  •  Business Process Mapping  •  Data & "
+            "Reporting  •  Change Management  •  Vendor & Stakeholder Management  •  "
+            "SOP Design  •  Operational Scaling"
         ),
         "skills": [
             (
-                "AI & Automation",
-                "Anthropic Claude API (Batch API, prompt caching, Model Context Protocol), "
-                "Claude Code, multi-agent orchestration, agentic workflow design, prompt "
-                "engineering, LLM evaluation and validation, n8n, Make, Zapier, Microsoft Power "
-                "Automate",
-            ),
-            ("Languages & Frameworks", "Python, SQL, JavaScript, Flask, React, HTML/CSS"),
-            (
-                "Data & Integration",
-                "REST API design and integration, webhooks, ETL and data pipelines, vector "
-                "embeddings, web scraping, SQLite / relational modeling, data validation",
+                "Automation Platforms",
+                "n8n, Zapier, Make, Microsoft Power Automate, workflow design and "
+                "orchestration, system-to-system integration",
             ),
             (
-                "Platforms & Tooling",
-                "Git / GitHub, Railway, Shopify, Klaviyo, QuickBooks, NetSuite, Google "
-                "Workspace, Microsoft 365, Asana, Slack",
+                "AI Tooling",
+                "Anthropic Claude API, Claude Code, agentic workflow design, prompt "
+                "engineering, AI-assisted process redesign, LLM output validation",
+            ),
+            (
+                "Data & Systems",
+                "SQL, Python scripting, REST API integration, webhooks, data pipelines, "
+                "reporting and dashboard design, spreadsheet modeling",
+            ),
+            (
+                "Business Systems",
+                "QuickBooks, NetSuite, Shopify, Klaviyo, Asana, Slack, Google Workspace, "
+                "Microsoft 365",
             ),
             (
                 "Practices",
-                "Agile / Scrum, requirements analysis, business process mapping, technical "
-                "documentation, statistical validation (walk-forward, Monte Carlo, Bayesian "
-                "estimation)",
+                "Business process mapping, requirements analysis, SOP and playbook design, "
+                "Agile / Scrum delivery, technical documentation, Sales & Operations "
+                "Planning (S&OP)",
             ),
         ],
     },
@@ -161,10 +163,11 @@ EMPLOYER_META: dict[str, dict[str, Any]] = {
             ),
         },
         "engineer": {
-            "title": "Founder — Builder / Principal Implementer",
+            "title": "Founder — Operator & Principal Implementer",
             "scope": (
-                "Bootstrapped venture studio. Hands-on across the full stack: specification, "
-                "implementation, deployment, and operation of production AI systems."
+                "Bootstrapped venture studio. Hands-on across specification, implementation, "
+                "deployment, and day-to-day operation of production AI systems — built by "
+                "directing AI coding agents rather than a development team."
             ),
         },
     },
@@ -216,7 +219,7 @@ EMPLOYER_META: dict[str, dict[str, Any]] = {
             ),
         },
         "engineer": {
-            "title": "Director of Operations  |  Technical Product Lead",
+            "title": "Director of Operations  |  Product & Delivery Lead",
             "scope": (
                 "Led delivery of MyIPO, a Reg A+ digital securities offering platform, and "
                 "Next Ones, an athlete discovery platform."

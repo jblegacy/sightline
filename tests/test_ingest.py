@@ -1,8 +1,6 @@
 from typing import Any
 
-from sightline.ingest import handle_webhook_event, job_to_posting
-
-WEBHOOK_URL = "https://example.com/webhooks/theirstack"
+from sightline.ingest import classify_search_profile, handle_webhook_event, job_to_posting
 
 
 class FakeDB:
@@ -19,14 +17,26 @@ class FakeDB:
             "queue_min_score": queue_min_score,
             "monthly_credits": 200,
             "score_threshold": 70,
-            "title_include": [],
-            "title_exclude": [],
             "queue_salary_min": 0,
             "queue_salary_max": 500000,
             "queue_max_age_days": 21,
             "queue_ko_tolerance": 9,
             "queue_include_no_salary": True,
         }
+        self._search_profiles = [
+            {
+                "id": "automation", "label": "AI / Workflow Automation",
+                "title_include": ["workflow automation", "automation specialist"],
+                "title_exclude": ["ai engineer", "software engineer"],
+                "resume_variant": "engineer", "budget_share": 0.6, "active": True,
+            },
+            {
+                "id": "cpg", "label": "CPG Operations",
+                "title_include": ["director of operations", "supply chain manager"],
+                "title_exclude": ["warehouse associate", "forklift"],
+                "resume_variant": "leadership", "budget_share": 0.4, "active": True,
+            },
+        ]
         self._next_id = 1
 
     def upsert_company(self, name: str, domain: str | None) -> int:
@@ -93,6 +103,16 @@ class FakeDB:
     def update_settings(self, fields: dict[str, Any]) -> dict[str, Any]:
         self._settings.update(fields)
         return self._settings
+
+    def get_search_profiles(self) -> list[dict[str, Any]]:
+        return self._search_profiles
+
+    def update_search_profile(self, profile_id: str, fields: dict[str, Any]) -> dict[str, Any]:
+        for p in self._search_profiles:
+            if p["id"] == profile_id:
+                p.update(fields)
+                return p
+        raise LookupError(f"search profile {profile_id!r} not found")
 
     def get_posting(self, posting_id: int) -> dict[str, Any]:
         for row in self.postings.values():
@@ -176,6 +196,7 @@ class FakeAnthropic:
             "matched_bullet_refs": ["BL-001"],
             "unmet_requirements": [],
             "knockouts": [],
+            "coding_interview_signals": [],
             "suggested_variant": "engineer",
             "reports_to": "",
             "named_contacts": [],
@@ -201,7 +222,7 @@ class FakeTheirStack:
     def find_saved_search(self, name):
         return {"id": 1, "is_alert_active": True}
 
-    def find_webhook(self, url):
+    def find_webhook_for_search(self, search_id):
         return {"id": 1, "is_active": True}
 
     def set_saved_search_active(self, search_id, is_active):
@@ -222,9 +243,7 @@ class FakeTheirStack:
 
 
 def dispatch(db, event, anthropic=None, theirstack=None):
-    return handle_webhook_event(
-        db, anthropic or FakeAnthropic(), theirstack or FakeTheirStack(), WEBHOOK_URL, event
-    )
+    return handle_webhook_event(db, anthropic or FakeAnthropic(), theirstack or FakeTheirStack(), event)
 
 
 SAMPLE_JOB = {
@@ -266,6 +285,32 @@ def test_job_to_posting_remote_flag_unclear_when_null():
     assert posting["remote_flag"] == "unclear"
 
 
+# ---- classify_search_profile ----
+
+_PROFILES = [
+    {"id": "automation", "title_include": ["workflow automation", "automation specialist"],
+     "title_exclude": ["ai engineer"]},
+    {"id": "cpg", "title_include": ["director of operations"], "title_exclude": ["forklift"]},
+]
+
+
+def test_classify_search_profile_matches_automation():
+    assert classify_search_profile("Automation Specialist", _PROFILES) == "automation"
+
+
+def test_classify_search_profile_matches_cpg():
+    assert classify_search_profile("Director of Operations", _PROFILES) == "cpg"
+
+
+def test_classify_search_profile_excluded_term_skips_that_profile():
+    # "AI Automation Engineer" hits both automation's include and exclude terms
+    assert classify_search_profile("AI Automation Engineer", _PROFILES) is None
+
+
+def test_classify_search_profile_no_match_returns_none():
+    assert classify_search_profile("Forklift Operator", _PROFILES) is None
+
+
 def test_handle_job_new_upserts_company_and_posting_and_logs_event():
     db = FakeDB()
     event = {"id": 1, "type": "job.new", "payload": SAMPLE_JOB}
@@ -274,6 +319,13 @@ def test_handle_job_new_upserts_company_and_posting_and_logs_event():
     assert "999001" in db.postings
     assert db.events[0]["event"] == "ingested"
     assert db.events[0]["payload"]["credits_consumed"] == 1
+
+
+def test_handle_job_new_stores_classified_search_profile_id():
+    db = FakeDB()
+    job = {**SAMPLE_JOB, "job_title": "Automation Specialist"}  # matches FakeDB's automation profile
+    dispatch(db, {"id": 1, "type": "job.new", "payload": job})
+    assert db.postings["999001"]["search_profile_id"] == "automation"
 
 
 def test_handle_job_new_is_idempotent_on_duplicate_delivery():
