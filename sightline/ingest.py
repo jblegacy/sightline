@@ -17,7 +17,7 @@ import hashlib
 from typing import Any
 
 from sightline.anthropic_client import AnthropicClient
-from sightline.budget import check_and_enforce_budget
+from sightline.budget import check_and_enforce_budget, check_and_enforce_daily_cap
 from sightline.db import SightlineDB
 from sightline.filter import apply_filter
 from sightline.scoring import score_posting
@@ -167,9 +167,10 @@ def handle_webhook_event(
     doesn't distinguish which profile matched, so job.new classifies it
     itself from the job title (see classify_search_profile).
 
-    Runs the credit circuit breaker after any event that cost a credit. This
-    can only stop *future* deliveries — the credit for the event we just
-    processed was already spent before we ever received the request."""
+    Runs both credit circuit breakers after any event that cost a credit —
+    the monthly budget limit and the daily throttle. Both can only stop
+    *future* deliveries — the credit for the event we just processed was
+    already spent before we ever received the request."""
     event_type = event["type"]
     payload = event["payload"]
     settings = db.get_settings()
@@ -186,4 +187,5 @@ def handle_webhook_event(
         return {"ok": True, "type": event_type, "ignored": True}
 
     check_and_enforce_budget(theirstack, db, monthly_credit_budget=settings.get("monthly_credits", 200))
+    check_and_enforce_daily_cap(theirstack, db, settings.get("daily_credit_cap"))
     return result

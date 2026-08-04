@@ -162,7 +162,8 @@ def api_credits(
         "used_api_credits": balance["used_api_credits"],
         "api_credits": balance["api_credits"],
         "monthly_credits": settings.get("monthly_credits", 200),
-        "per_run_cap": settings.get("per_run_cap", 120),
+        "daily_credit_cap": settings.get("daily_credit_cap"),
+        "used_today": db.credits_used_today(),
     }
 
 

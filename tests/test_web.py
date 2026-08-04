@@ -284,6 +284,8 @@ def test_api_credits_returns_real_balance(client):
     body = resp.json()
     assert body["used_api_credits"] == 10  # FakeTheirStack default
     assert body["api_credits"] == 200
+    assert body["daily_credit_cap"] is None  # not set by default
+    assert body["used_today"] == 0
 
 
 # ---- assembly ----
