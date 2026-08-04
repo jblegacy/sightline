@@ -158,21 +158,26 @@ def score_posting(
     # Recompute total ourselves rather than trust the model's arithmetic —
     # each dimension being individually correct doesn't guarantee the sum is.
     computed_total = sum(result["dimensions"].values())
+    # The schema marks these required, but tool-use generation completeness
+    # isn't guaranteed — a long JD can occasionally cause Haiku to drop one.
+    # These are extracted signal, not the score itself (dimensions/total/
+    # rationale stay hard-required below): defaulting is safer than losing
+    # the whole score over one missing extraction field.
     return {
         "rubric_version": RUBRIC_VERSION,
         "model": MODEL,
         "total": computed_total,
         "dimensions": result["dimensions"],
         "rationale": result["rationale"],
-        "keywords": result["keywords"],
-        "matched_bullet_ids": result["matched_bullet_refs"],
-        "unmet_requirements": result["unmet_requirements"],
-        "knockouts": result["knockouts"],
-        "coding_interview_signals": result["coding_interview_signals"],
-        "suggested_variant": result["suggested_variant"],
-        "reports_to": result["reports_to"] or None,
-        "named_contacts": result["named_contacts"],
-        "target_titles": result["target_titles"],
-        "company_signals": result["company_signals"],
+        "keywords": result.get("keywords") or [],
+        "matched_bullet_ids": result.get("matched_bullet_refs") or [],
+        "unmet_requirements": result.get("unmet_requirements") or [],
+        "knockouts": result.get("knockouts") or [],
+        "coding_interview_signals": result.get("coding_interview_signals") or [],
+        "suggested_variant": result.get("suggested_variant"),
+        "reports_to": result.get("reports_to") or None,
+        "named_contacts": result.get("named_contacts") or [],
+        "target_titles": result.get("target_titles") or [],
+        "company_signals": result.get("company_signals") or [],
         "cost_usd": round(cost_usd, 5),
     }

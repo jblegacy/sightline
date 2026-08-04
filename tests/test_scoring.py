@@ -77,3 +77,16 @@ def test_score_posting_empty_reports_to_becomes_none():
     fake_client.structured_call.return_value = (result, 0.001)
     row = score_posting(fake_client, SAMPLE_POSTING, SAMPLE_BULLETS)
     assert row["reports_to"] is None
+
+
+def test_score_posting_survives_missing_extraction_field():
+    # The schema marks coding_interview_signals (and friends) required, but
+    # tool-use generation completeness isn't guaranteed — seen live: Haiku
+    # dropped it on a real JD and score_posting KeyError'd, losing the whole
+    # score. Missing extraction fields should default, not blow up scoring.
+    result = {k: v for k, v in FAKE_MODEL_RESULT.items() if k != "coding_interview_signals"}
+    fake_client = MagicMock()
+    fake_client.structured_call.return_value = (result, 0.001)
+    row = score_posting(fake_client, SAMPLE_POSTING, SAMPLE_BULLETS)
+    assert row["coding_interview_signals"] == []
+    assert row["total"] == 78  # the core score itself is untouched
