@@ -3,12 +3,13 @@ expects. That prototype is the API contract per CLAUDE.md — match its shapes,
 don't invent new ones. See the `P` array and `CFG`/`QV` objects in the
 prototype source for the canonical field list.
 
-`app` (resume/application state) is populated from the `variants` embed when
-a posting has been assembled; `o` (outreach state) from the `outreach`
-embed once drafts exist. Both stay None otherwise — the prototype already
-treats them as optional. Application-status tracking beyond "resume ready"
-(submitted/screen/interview/etc.) isn't backed by the `applications` table
-yet and stays client-side, same as before.
+`app` (resume/application state) comes from the `applications` row once one
+exists (Defer, Reject, Mark submitted, a status change, notes, or Record
+final all create one), falling back to a synthesized "ready to submit"
+view of the `variants` embed when a resume's been built but no application
+action has happened yet. `o` (outreach state) comes from the `outreach`
+embed once drafts exist. All stay None otherwise — the prototype already
+treats them as optional.
 """
 from __future__ import annotations
 
@@ -26,11 +27,38 @@ def _variant_to_app(variant: dict[str, Any]) -> dict[str, Any]:
     return {
         "variant": _VARIANT_LABEL.get(variant.get("kind"), variant.get("kind")),
         "file": (variant.get("storage_path") or "").split("/")[-1] or None,
+        "finalFile": None,
         "status": "ready to submit",
         "sent": None,
         "due": None,
         "notes": "",
     }
+
+
+def _application_to_app(application: dict[str, Any], variant: dict[str, Any] | None) -> dict[str, Any]:
+    variant = variant or {}
+    return {
+        "variant": _VARIANT_LABEL.get(variant.get("kind"), variant.get("kind")) if variant else None,
+        "file": ((variant.get("storage_path") or "").split("/")[-1] or None) if variant else None,
+        "finalFile": application.get("final_filename"),
+        "status": application.get("status") or ("ready to submit" if variant else "deferred"),
+        "sent": application.get("submitted_at"),
+        "due": application.get("follow_up_due"),
+        "notes": application.get("notes") or "",
+    }
+
+
+def _stage_from_app(app: dict[str, Any] | None, score: int, score_threshold: int) -> str:
+    if app is None:
+        return "queue" if score >= score_threshold else "watch"
+    status = app["status"]
+    if status == "deferred":
+        return "watch"
+    if status == "rejected" and not app["sent"]:
+        return "rejected"  # queue-level reject, before ever applying
+    if app["sent"] or status in ("submitted", "screen", "interview", "offer", "ghosted", "rejected"):
+        return "applied"
+    return "approved"
 
 
 def _outreach_to_o(outreach: dict[str, Any]) -> dict[str, Any]:
@@ -75,10 +103,19 @@ def posting_row_to_p(row: dict[str, Any], co_count: int) -> dict[str, Any] | Non
     company = row.get("companies") or {}
     variants = row.get("variants") or []
     outreach = row.get("outreach") or []
+    applications = row.get("applications") or []
+    variant = variants[0] if variants else None
+
+    if applications:
+        app = _application_to_app(applications[0], variant)
+    elif variant:
+        app = _variant_to_app(variant)
+    else:
+        app = None
 
     return {
         "id": row["id"],
-        "app": _variant_to_app(variants[0]) if variants else None,
+        "app": app,
         "o": _outreach_to_o(outreach[0]) if outreach else None,
         "co": company.get("name", "Unknown"),
         "ti": row["title"],
@@ -96,7 +133,7 @@ def posting_row_to_p(row: dict[str, Any], co_count: int) -> dict[str, Any] | Non
         "rat": score.get("rationale") or "",
         "kw": score.get("keywords") or [],
         "gaps": score.get("unmet_requirements") or [],
-        "brief": variants[0].get("brief") or "" if variants else "",
+        "brief": (variant.get("brief") or "") if variant else "",
         "rt": score.get("reports_to") or "Not stated in posting",
         "nc": [
             {"n": c.get("name"), "t": c.get("title")} for c in (score.get("named_contacts") or [])
@@ -114,10 +151,7 @@ def postings_to_dashboard_p(rows: list[dict[str, Any]], score_threshold: int) ->
         p = posting_row_to_p(row, co_counts.get(row.get("company_id"), 1))
         if p is None:
             continue
-        if p["app"] is not None:
-            p["stage"] = "approved"  # resume built; ATS-submission tracking isn't wired yet
-        else:
-            p["stage"] = "queue" if p["score"] >= score_threshold else "watch"
+        p["stage"] = _stage_from_app(p["app"], p["score"], score_threshold)
         result.append(p)
     return result
 

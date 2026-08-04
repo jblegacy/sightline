@@ -187,5 +187,5 @@ def handle_webhook_event(
         return {"ok": True, "type": event_type, "ignored": True}
 
     check_and_enforce_budget(theirstack, db, monthly_credit_budget=settings.get("monthly_credits", 200))
-    check_and_enforce_daily_cap(theirstack, db, settings.get("daily_credit_cap"))
+    check_and_enforce_daily_cap(theirstack, db, settings.get("daily_credit_cap"), settings)
     return result

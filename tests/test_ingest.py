@@ -11,6 +11,7 @@ class FakeDB:
         self.scores: list[dict[str, Any]] = []
         self.variants: list[dict[str, Any]] = []
         self.outreach: list[dict[str, Any]] = []
+        self.applications: list[dict[str, Any]] = []
         self.uploaded_documents: list[tuple[str, str, bytes]] = []
         self._settings = {
             "red_flag_phrases": red_flag_phrases or [],
@@ -78,9 +79,6 @@ class FakeDB:
     def get_settings(self) -> dict[str, Any]:
         return self._settings
 
-    def credits_used_today(self) -> int:
-        return sum((e.get("payload") or {}).get("credits_consumed", 0) for e in self.events)
-
     def get_bullets(self) -> list[dict[str, Any]]:
         return [{"ref": "BL-001", "text": "Sample bullet.", "tags": ["automation"], "variants": ["engineer"]}]
 
@@ -92,9 +90,11 @@ class FakeDB:
             matching_scores = [s for s in self.scores if s.get("posting_id") == row["id"]]
             matching_variants = [v for v in self.variants if v.get("posting_id") == row["id"]]
             matching_outreach = [o for o in self.outreach if o.get("posting_id") == row["id"]]
+            matching_applications = [a for a in self.applications if a.get("posting_id") == row["id"]]
             result.append({
                 **row, "companies": {"name": "Fake Co"}, "scores": matching_scores,
                 "variants": matching_variants, "outreach": matching_outreach,
+                "applications": matching_applications,
             })
         return result
 
@@ -123,9 +123,13 @@ class FakeDB:
                 matching_scores = [s for s in self.scores if s.get("posting_id") == posting_id]
                 matching_variants = [v for v in self.variants if v.get("posting_id") == posting_id]
                 matching_outreach = [o for o in self.outreach if o.get("posting_id") == posting_id]
+                matching_applications = [
+                    a for a in self.applications if a.get("posting_id") == posting_id
+                ]
                 return {
                     **row, "companies": {"name": "Fake Co"}, "scores": matching_scores,
                     "variants": matching_variants, "outreach": matching_outreach,
+                    "applications": matching_applications,
                 }
         raise LookupError(f"posting {posting_id} not found")
 
@@ -166,6 +170,57 @@ class FakeDB:
         row["sent_channel"] = channel
         row["follow_up_due"] = "2026-08-10"
         return row
+
+    def upsert_application(self, fields: dict[str, Any]) -> dict[str, Any]:
+        existing = next(
+            (a for a in self.applications if a.get("posting_id") == fields.get("posting_id")), None
+        )
+        if existing:
+            existing.update(fields)
+            return existing
+        row = {**fields, "id": len(self.applications) + 1}
+        self.applications.append(row)
+        return row
+
+    def count_postings_since(self, since_iso: str) -> int:
+        return sum(1 for r in self.postings.values() if r.get("first_seen_at", "") >= since_iso)
+
+    def count_scored_above_since(self, since_iso: str, score_threshold: int) -> int:
+        count = 0
+        for row in self.postings.values():
+            if row.get("status") != "scored" or row.get("first_seen_at", "") < since_iso:
+                continue
+            matching_scores = [s for s in self.scores if s.get("posting_id") == row["id"]]
+            if matching_scores and matching_scores[-1].get("total", 0) >= score_threshold:
+                count += 1
+        return count
+
+    def submitted_applications_since(self, since_iso: str) -> list[dict[str, Any]]:
+        result = []
+        for a in self.applications:
+            submitted_at = a.get("submitted_at")
+            if not submitted_at or submitted_at < since_iso:
+                continue
+            posting = next(
+                (r for r in self.postings.values() if r["id"] == a.get("posting_id")), None
+            )
+            result.append({
+                "submitted_at": submitted_at,
+                "postings": {"first_seen_at": posting["first_seen_at"]} if posting else None,
+            })
+        return result
+
+    def replied_outreach_since(self, since_iso: str) -> int:
+        return sum(
+            1 for o in self.outreach if o.get("replied_at") and o["replied_at"] >= since_iso
+        )
+
+    def scoring_cost_since(self, since_iso: str) -> float:
+        return sum(
+            s.get("cost_usd") or 0
+            for s in self.scores
+            if s.get("created_at", "") >= since_iso
+        )
 
 
 class FakeAnthropic:
@@ -472,9 +527,15 @@ def test_under_budget_does_not_trip_circuit_breaker():
 
 def test_daily_cap_trips_end_to_end_even_when_under_monthly_budget():
     db = FakeDB()
-    db._settings["daily_credit_cap"] = 1  # first event already meets it
+    db._settings["daily_credit_cap"] = 1
     ts = FakeTheirStack(used_api_credits=10)  # well under the monthly budget
+    # first event of the day just establishes the baseline — can't trip yet
     dispatch(db, {"id": 1, "type": "job.new", "payload": SAMPLE_JOB}, theirstack=ts)
+    assert ts.disabled_search is False
+
+    ts.used_api_credits = 11  # a real credit got spent since the baseline
+    other_job = {**SAMPLE_JOB, "id": 999002}
+    dispatch(db, {"id": 2, "type": "job.new", "payload": other_job}, theirstack=ts)
     assert ts.disabled_search is True
     assert ts.disabled_webhook is True
     assert any(e["event"] == "daily_cap_tripped" for e in db.events)

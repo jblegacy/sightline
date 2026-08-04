@@ -106,28 +106,6 @@ class SightlineDB:
         )
         resp.raise_for_status()
 
-    def credits_used_today(self) -> int:
-        """Sums credits_consumed from today's ingest events. Small enough
-        corpus (a few hundred events/day at most) that summing client-side
-        beats standing up a Postgres view for one number — see CLAUDE.md on
-        reaching for the sophisticated option here being a bug."""
-        import datetime as _dt
-
-        midnight = _dt.datetime.now(_dt.timezone.utc).replace(
-            hour=0, minute=0, second=0, microsecond=0
-        ).isoformat()
-        resp = self._client.get(
-            "/events",
-            params={
-                "entity_type": "eq.posting",
-                "event": "in.(ingested,duplicate_delivery)",
-                "created_at": f"gte.{midnight}",
-                "select": "payload",
-            },
-        )
-        resp.raise_for_status()
-        return sum((e.get("payload") or {}).get("credits_consumed", 0) for e in resp.json())
-
     def get_settings(self) -> dict[str, Any]:
         resp = self._client.get("/settings", params={"id": "eq.1", "select": "*"})
         resp.raise_for_status()
@@ -200,7 +178,7 @@ class SightlineDB:
             "/postings",
             params={
                 "id": f"eq.{posting_id}",
-                "select": "*,companies(id,name),scores(*),variants(*),outreach(*)",
+                "select": "*,companies(id,name),scores(*),variants(*),outreach(*),applications(*)",
                 "scores.order": "id.desc",
                 "variants.order": "id.desc",
             },
@@ -252,7 +230,7 @@ class SightlineDB:
             "/postings",
             params={
                 "status": "eq.scored",
-                "select": "*,companies(id,name),scores(*),variants(*),outreach(*)",
+                "select": "*,companies(id,name),scores(*),variants(*),outreach(*),applications(*)",
                 "order": "first_seen_at.desc",
                 "scores.order": "id.desc",
                 "variants.order": "id.desc",
@@ -260,6 +238,73 @@ class SightlineDB:
         )
         resp.raise_for_status()
         return resp.json()
+
+    def upsert_application(self, fields: dict[str, Any]) -> dict[str, Any]:
+        """One row per posting — Defer, Reject, Mark submitted, the status
+        dropdown, notes, and Record final on the dashboard all funnel here.
+        See sightline/dashboard.py for how status/submitted_at drive the
+        posting's displayed stage."""
+        import datetime as _dt
+
+        resp = self._client.post(
+            "/applications",
+            params={"on_conflict": "posting_id"},
+            headers={"Prefer": "resolution=merge-duplicates,return=representation"},
+            json={**fields, "updated_at": _dt.datetime.now(_dt.timezone.utc).isoformat()},
+        )
+        resp.raise_for_status()
+        return resp.json()[0]
+
+    def count_postings_since(self, since_iso: str) -> int:
+        resp = self._client.get(
+            "/postings", params={"first_seen_at": f"gte.{since_iso}", "select": "id"}
+        )
+        resp.raise_for_status()
+        return len(resp.json())
+
+    def count_scored_above_since(self, since_iso: str, score_threshold: int) -> int:
+        """Postings whose latest score cleared the queue threshold, ingested
+        in the window — matches what 'surfaced to queue' means on the
+        dashboard (see dashboard.py's stage derivation)."""
+        resp = self._client.get(
+            "/postings",
+            params={
+                "first_seen_at": f"gte.{since_iso}",
+                "status": "eq.scored",
+                "select": "id,scores(total)",
+                "scores.order": "id.desc",
+            },
+        )
+        resp.raise_for_status()
+        rows = resp.json()
+        return sum(
+            1 for r in rows if (r.get("scores") or [{}])[0].get("total", 0) >= score_threshold
+        )
+
+    def submitted_applications_since(self, since_iso: str) -> list[dict[str, Any]]:
+        resp = self._client.get(
+            "/applications",
+            params={
+                "submitted_at": f"gte.{since_iso}",
+                "select": "submitted_at,postings(first_seen_at)",
+            },
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def replied_outreach_since(self, since_iso: str) -> int:
+        resp = self._client.get(
+            "/outreach", params={"replied_at": f"gte.{since_iso}", "select": "id"}
+        )
+        resp.raise_for_status()
+        return len(resp.json())
+
+    def scoring_cost_since(self, since_iso: str) -> float:
+        resp = self._client.get(
+            "/scores", params={"created_at": f"gte.{since_iso}", "select": "cost_usd"}
+        )
+        resp.raise_for_status()
+        return sum(r.get("cost_usd") or 0 for r in resp.json())
 
     def upsert_outreach(self, fields: dict[str, Any]) -> dict[str, Any]:
         resp = self._client.post(
