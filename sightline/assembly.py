@@ -256,6 +256,12 @@ def select_bullets(
 
     by_org: dict[str, list[dict[str, Any]]] = {}
     for b in bullets:
+        # retired is a permanent exclusion, not "unreviewed" — a retired
+        # bullet should never be a candidate, not just fail assert_shippable
+        # after already being selected (found live: it surfaced as a
+        # confusing assembly error instead of being cleanly passed over).
+        if b.get("status") == "retired":
+            continue
         if variant in (b.get("variants") or []) and b.get("source_org") in EMPLOYER_META:
             by_org.setdefault(b["source_org"], []).append(b)
 

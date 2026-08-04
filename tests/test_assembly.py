@@ -73,6 +73,20 @@ def test_select_bullets_keeps_at_least_3_of_4():
     assert len(beam["dropped"]) == 1
 
 
+def test_select_bullets_excludes_retired_bullets():
+    # Found live: a retired bullet was still getting selected, then failing
+    # assert_shippable with a confusing "status=retired" error instead of
+    # being cleanly passed over — retired is a permanent exclusion, not
+    # "unreviewed" the way draft is.
+    bullets = [*BULLETS, make_bullet(
+        "BL-009", "BEAM LEGACY GROUP", ["engineer"], ["production", "api design"], status="retired",
+    )]
+    sections = select_bullets(bullets, "engineer", [])
+    all_refs = [b["ref"] for sec in sections for b in sec["order"]] + \
+        [b["ref"] for sec in sections for b in sec["dropped"]]
+    assert "BL-009" not in all_refs
+
+
 def test_select_bullets_never_modifies_bullet_text():
     sections = select_bullets(BULLETS, "engineer", ["api design"])
     for sec in sections:
