@@ -371,13 +371,14 @@ table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       <h3>Credit budget</h3>
       <div class="row2">
         <div class="fld"><label>Monthly credits</label><input type="text" id="cMonth" value="200"></div>
-        <div class="fld"><label>Hard cap per run</label><input type="text" id="cRun" value="120">
-          <div class="note">Safety valve — a bad query can't drain the month overnight</div></div>
+        <div class="fld"><label>Daily cap</label><input type="text" id="cRun" placeholder="blank = off">
+          <div class="note">Throttle, not a budget — disables both profiles for the day once hit. Leave blank while quality's still unproven; only the monthly limit applies.</div></div>
       </div>
       <button class="btn go" id="saveCreditBudget" style="margin:6px 0">Save credit budget</button>
       <label class="label">Used this month</label>
       <div class="meter"><b id="cMeter" style="width:0%"></b></div>
       <div class="note" id="cMeterText">Loading…</div>
+      <div class="note" id="cDailyText"></div>
       <div class="warnbox" style="margin-top:13px"><b>Backlog is separate.</b> Currently-open matching roles are a one-time cost. Size it with preview, then sweep in tranches — don't let the first live run discover it.</div>
     </div>
 
@@ -824,7 +825,7 @@ function populateCriteriaForm(s){
   $('#fSrc').value=(s.source_exclude||[]).join(', ');
 
   $('#cMonth').value=s.monthly_credits??200;
-  $('#cRun').value=s.per_run_cap??120;
+  $('#cRun').value=s.daily_credit_cap??'';
 
   $('#qSalMin').value=s.queue_salary_min??0;
   $('#qSalMax').value=s.queue_salary_max??500000;
@@ -864,7 +865,10 @@ async function loadCredits(){
     const pct=Math.min(100,Math.round(100*c.used_api_credits/Math.max(1,c.monthly_credits)));
     $('#cMeter').style.width=pct+'%';
     $('#cMeter').className=pct>=90?'over':pct>=70?'warn':'';
-    $('#cMeterText').textContent=`${c.used_api_credits} of ${c.monthly_credits} used this month (${c.api_credits} total granted, per-run cap ${c.per_run_cap})`;
+    $('#cMeterText').textContent=`${c.used_api_credits} of ${c.monthly_credits} used this month (${c.api_credits} total granted)`;
+    $('#cDailyText').textContent=c.daily_credit_cap
+      ?`${c.used_today} of ${c.daily_credit_cap} used today — throttle is on`
+      :`${c.used_today} used today — no daily throttle set`;
   }catch(e){console.error('loadCredits failed:',e)}
 }
 
@@ -993,7 +997,8 @@ document.addEventListener('click',e=>{
     patchSettings(currentScopeFields()).then(ok=>{if(ok)toast('Scope saved \u2014 synced to both profiles')});
     return}
   if(e.target.id==='saveCreditBudget'){
-    patchSettings({monthly_credits:+($('#cMonth').value||200), per_run_cap:+($('#cRun').value||120)})
+    const raw=$('#cRun').value.trim();
+    patchSettings({monthly_credits:+($('#cMonth').value||200), daily_credit_cap: raw?+raw:null})
       .then(ok=>{if(ok){toast('Credit budget saved');loadCredits()}});
     return}
   if(e.target.id==='saveBadges'){

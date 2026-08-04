@@ -108,7 +108,7 @@ Salary belongs in the queue layer by default. A fetch-time salary filter drops e
 
 Query terms, filters, thresholds, and credit budget live in the `settings` table and are edited from the dashboard. Do not hard-code title lists or thresholds.
 
-The Preview control must use `blur_company_data: true` so tuning costs nothing. Enforce `per_run_cap` in the worker as a hard stop — the UI value is a display of it, not the enforcement.
+The Preview control must use `blur_company_data: true` so tuning costs nothing. `settings.daily_credit_cap` is a real throttle, not a display value — `check_and_enforce_daily_cap` (sightline/budget.py) disables both search profiles for the day once it's hit, independent of the monthly budget. Neither breaker auto-re-enables; re-enabling is a deliberate dashboard action, same as every other guardrail here stays human-in-the-loop.
 
 ## Calibration
 

@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock
 
-from sightline.budget import check_and_enforce_budget, saved_search_name
+from sightline.budget import check_and_enforce_budget, check_and_enforce_daily_cap, saved_search_name
 
 
 def make_theirstack(used_api_credits: int, active: bool = True, missing: bool = False):
@@ -58,4 +58,54 @@ def test_missing_saved_search_or_webhook_does_not_raise():
     ts = make_theirstack(used_api_credits=200, missing=True)
     db = MagicMock()
     result = check_and_enforce_budget(ts, db, monthly_credit_budget=200)
+    assert result["tripped"] is True
+
+
+# ---- daily cap: a throttle, independent of the monthly budget ----
+
+
+def test_daily_cap_none_never_trips():
+    ts = make_theirstack(used_api_credits=10)
+    db = MagicMock()
+    db.credits_used_today.return_value = 999  # would trip if the cap were checked
+    result = check_and_enforce_daily_cap(ts, db, None)
+    assert result["tripped"] is False
+    ts.set_saved_search_active.assert_not_called()
+
+
+def test_daily_cap_zero_never_trips():
+    ts = make_theirstack(used_api_credits=10)
+    db = MagicMock()
+    db.credits_used_today.return_value = 999
+    result = check_and_enforce_daily_cap(ts, db, 0)
+    assert result["tripped"] is False
+
+
+def test_daily_cap_under_threshold_does_not_trip():
+    ts = make_theirstack(used_api_credits=10)
+    db = MagicMock()
+    db.credits_used_today.return_value = 50
+    result = check_and_enforce_daily_cap(ts, db, 100)
+    assert result["tripped"] is False
+    ts.set_saved_search_active.assert_not_called()
+
+
+def test_daily_cap_at_threshold_trips_and_disables_both_profiles():
+    ts = make_theirstack(used_api_credits=10, active=True)
+    db = MagicMock()
+    db.credits_used_today.return_value = 100
+    result = check_and_enforce_daily_cap(ts, db, 100)
+    assert result["tripped"] is True
+    assert ts.set_saved_search_active.call_count == 2
+    assert ts.set_webhook_active.call_count == 2
+    db.log_event.assert_called_once()
+    assert db.log_event.call_args.kwargs["event"] == "daily_cap_tripped"
+
+
+def test_daily_cap_independent_of_monthly_budget():
+    # low monthly usage, but the daily throttle still trips on its own
+    ts = make_theirstack(used_api_credits=5, active=True)
+    db = MagicMock()
+    db.credits_used_today.return_value = 100
+    result = check_and_enforce_daily_cap(ts, db, 100)
     assert result["tripped"] is True
