@@ -198,10 +198,15 @@ class SightlineDB:
 
     def upload_document(self, bucket: str, path: str, content: bytes) -> None:
         """Storage's REST surface lives at /storage/v1, not /rest/v1 — this
-        client's base_url is PostgREST's, but an absolute path here still
-        resolves against the same Supabase project host."""
+        client's base_url is PostgREST's (.../rest/v1), and httpx merges a
+        leading-slash relative path onto that base rather than replacing it
+        (found live: it was actually requesting /rest/v1/storage/v1/... and
+        404ing — this was assembly's first real invocation all session, the
+        provenance gate blocked every earlier attempt). Passing a full
+        absolute URL bypasses base_url entirely instead of merging with it.
+        """
         resp = self._client.post(
-            f"/storage/v1/object/{bucket}/{path}",
+            f"{self._storage_origin}/storage/v1/object/{bucket}/{path}",
             content=content,
             headers={
                 "Content-Type": (
@@ -214,12 +219,16 @@ class SightlineDB:
 
     def create_signed_url(self, bucket: str, path: str, expires_in: int = 3600) -> str:
         """Bucket is private (see CLAUDE.md) — every download goes through a
-        signed, time-limited URL, never a public one."""
+        signed, time-limited URL, never a public one. Supabase's response
+        `signedURL` is relative to /storage/v1 (e.g. "/object/sign/..."),
+        not to the bare origin — found live: concatenating it onto the bare
+        origin dropped /storage/v1 and produced a 404 download link."""
         resp = self._client.post(
-            f"/storage/v1/object/sign/{bucket}/{path}", json={"expiresIn": expires_in}
+            f"{self._storage_origin}/storage/v1/object/sign/{bucket}/{path}",
+            json={"expiresIn": expires_in},
         )
         resp.raise_for_status()
-        return f"{self._storage_origin}{resp.json()['signedURL']}"
+        return f"{self._storage_origin}/storage/v1{resp.json()['signedURL']}"
 
     def list_scored_postings(self) -> list[dict[str, Any]]:
         """Postings that survived scoring — status='scored' means total already

@@ -243,3 +243,19 @@ def test_generate_brief_sends_rationale_and_keywords_to_anthropic():
     sent = anthropic.calls[0]["user_content"]
     assert "Strong overlap." in sent
     assert "production" in sent
+
+
+def test_generate_brief_survives_missing_brief_field():
+    # BRIEF_SCHEMA marks "brief" required, but tool-use generation
+    # completeness isn't guaranteed — found live: assembly's first real
+    # invocation all session (blocked by the provenance gate until then)
+    # hit exactly this and crashed with a bare KeyError.
+    class EmptyAnthropic:
+        def structured_call(self, **kwargs):
+            return {}, 0.002
+
+    posting, _ = make_posting()
+    score = posting["scores"][0]
+    brief, cost = generate_brief(EmptyAnthropic(), posting, score)
+    assert brief == ""
+    assert cost == 0.002
