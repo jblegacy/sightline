@@ -21,6 +21,7 @@ system stays human-in-the-loop.
 """
 from __future__ import annotations
 
+import datetime as _dt
 from typing import Any
 
 from sightline.db import SightlineDB
@@ -74,10 +75,39 @@ def check_and_enforce_budget(
     return {"tripped": True, "used_api_credits": used, "threshold": threshold}
 
 
+def _get_or_reset_daily_baseline(db: SightlineDB, settings: dict[str, Any], used_total: int) -> int:
+    """The credit-balance baseline for 'today' (UTC) — resets the moment the
+    date rolls over or no baseline exists yet, otherwise returns the one
+    already captured."""
+    today = _dt.datetime.now(_dt.timezone.utc).date().isoformat()
+    baseline = settings.get("credit_balance_baseline")
+    baseline_date = settings.get("credit_balance_baseline_date")
+    if baseline_date == today and baseline is not None:
+        return baseline
+    db.update_settings({"credit_balance_baseline": used_total, "credit_balance_baseline_date": today})
+    return used_total
+
+
+def used_today(theirstack: TheirStackClient, db: SightlineDB, settings: dict[str, Any]) -> int:
+    """Real credits spent since UTC midnight — anchored to TheirStack's own
+    cumulative used_api_credits, diffed against a baseline snapshot, not
+    summed from our own `events` log. The log approach drifted in practice:
+    verified live, our log said 31 while TheirStack's real balance said 18,
+    because hand-signed test webhook payloads posted during development
+    look identical to a real delivery in our own log but never touched
+    TheirStack's billing at all. The real balance can't have that problem —
+    it only moves when TheirStack actually charges something."""
+    balance = theirstack.credit_balance()
+    used_total = balance["used_api_credits"]
+    baseline = _get_or_reset_daily_baseline(db, settings, used_total)
+    return used_total - baseline
+
+
 def check_and_enforce_daily_cap(
     theirstack: TheirStackClient,
     db: SightlineDB,
     daily_credit_cap: int | None,
+    settings: dict[str, Any],
 ) -> dict[str, Any]:
     """A throttle, not a budget limit — meant to cap the blind ramp before
     quality's been reviewed, independent of how large the monthly budget is.
@@ -86,14 +116,14 @@ def check_and_enforce_daily_cap(
     if not daily_credit_cap:
         return {"tripped": False, "reason": "no daily cap set"}
 
-    used_today = db.credits_used_today()
-    if used_today < daily_credit_cap:
-        return {"tripped": False, "used_today": used_today, "daily_credit_cap": daily_credit_cap}
+    today_usage = used_today(theirstack, db, settings)
+    if today_usage < daily_credit_cap:
+        return {"tripped": False, "used_today": today_usage, "daily_credit_cap": daily_credit_cap}
 
     _disable_all_profiles(theirstack)
     db.log_event(
         entity_type="budget",
         event="daily_cap_tripped",
-        payload={"used_today": used_today, "daily_credit_cap": daily_credit_cap},
+        payload={"used_today": today_usage, "daily_credit_cap": daily_credit_cap},
     )
-    return {"tripped": True, "used_today": used_today, "daily_credit_cap": daily_credit_cap}
+    return {"tripped": True, "used_today": today_usage, "daily_credit_cap": daily_credit_cap}

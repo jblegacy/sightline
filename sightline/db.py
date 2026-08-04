@@ -106,28 +106,6 @@ class SightlineDB:
         )
         resp.raise_for_status()
 
-    def credits_used_today(self) -> int:
-        """Sums credits_consumed from today's ingest events. Small enough
-        corpus (a few hundred events/day at most) that summing client-side
-        beats standing up a Postgres view for one number — see CLAUDE.md on
-        reaching for the sophisticated option here being a bug."""
-        import datetime as _dt
-
-        midnight = _dt.datetime.now(_dt.timezone.utc).replace(
-            hour=0, minute=0, second=0, microsecond=0
-        ).isoformat()
-        resp = self._client.get(
-            "/events",
-            params={
-                "entity_type": "eq.posting",
-                "event": "in.(ingested,duplicate_delivery)",
-                "created_at": f"gte.{midnight}",
-                "select": "payload",
-            },
-        )
-        resp.raise_for_status()
-        return sum((e.get("payload") or {}).get("credits_consumed", 0) for e in resp.json())
-
     def get_settings(self) -> dict[str, Any]:
         resp = self._client.get("/settings", params={"id": "eq.1", "select": "*"})
         resp.raise_for_status()

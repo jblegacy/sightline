@@ -78,9 +78,6 @@ class FakeDB:
     def get_settings(self) -> dict[str, Any]:
         return self._settings
 
-    def credits_used_today(self) -> int:
-        return sum((e.get("payload") or {}).get("credits_consumed", 0) for e in self.events)
-
     def get_bullets(self) -> list[dict[str, Any]]:
         return [{"ref": "BL-001", "text": "Sample bullet.", "tags": ["automation"], "variants": ["engineer"]}]
 
@@ -472,9 +469,15 @@ def test_under_budget_does_not_trip_circuit_breaker():
 
 def test_daily_cap_trips_end_to_end_even_when_under_monthly_budget():
     db = FakeDB()
-    db._settings["daily_credit_cap"] = 1  # first event already meets it
+    db._settings["daily_credit_cap"] = 1
     ts = FakeTheirStack(used_api_credits=10)  # well under the monthly budget
+    # first event of the day just establishes the baseline — can't trip yet
     dispatch(db, {"id": 1, "type": "job.new", "payload": SAMPLE_JOB}, theirstack=ts)
+    assert ts.disabled_search is False
+
+    ts.used_api_credits = 11  # a real credit got spent since the baseline
+    other_job = {**SAMPLE_JOB, "id": 999002}
+    dispatch(db, {"id": 2, "type": "job.new", "payload": other_job}, theirstack=ts)
     assert ts.disabled_search is True
     assert ts.disabled_webhook is True
     assert any(e["event"] == "daily_cap_tripped" for e in db.events)

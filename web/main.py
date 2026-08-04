@@ -16,6 +16,7 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 from sightline.anthropic_client import AnthropicClient
 from sightline.assembly import assemble, variant_detail
+from sightline.budget import used_today
 from sightline.config import Settings, get_settings
 from sightline.dashboard import postings_to_dashboard_p, search_profiles_to_dashboard, settings_to_cfg_qv
 from sightline.db import SightlineDB
@@ -163,7 +164,7 @@ def api_credits(
         "api_credits": balance["api_credits"],
         "monthly_credits": settings.get("monthly_credits", 200),
         "daily_credit_cap": settings.get("daily_credit_cap"),
-        "used_today": db.credits_used_today(),
+        "used_today": used_today(theirstack, db, settings),
     }
 
 
