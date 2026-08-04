@@ -175,6 +175,15 @@ class FakeDB:
         row["follow_up_due"] = "2026-08-10"
         return row
 
+    def override_score(self, score_id: int, total: int | None, reason: str | None) -> dict[str, Any]:
+        for s in self.scores:
+            if s["id"] == score_id:
+                s["human_override_total"] = total
+                s["human_override_reason"] = reason
+                s["human_override_at"] = "2026-08-04T12:00:00+00:00" if total is not None else None
+                return s
+        raise LookupError(f"score {score_id} not found")
+
     def upsert_application(self, fields: dict[str, Any]) -> dict[str, Any]:
         existing = next(
             (a for a in self.applications if a.get("posting_id") == fields.get("posting_id")), None

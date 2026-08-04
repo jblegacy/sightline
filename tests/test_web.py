@@ -472,6 +472,66 @@ def test_api_application_patch_mark_submitted_moves_to_applied(client, fake_db):
     assert p["app"]["sent"] == "2026-08-04T12:00:00+00:00"
 
 
+# ---- score override ----
+
+
+def test_api_score_override_requires_auth(client):
+    resp = client.patch("/api/postings/1/score-override", json={"total": 78, "reason": "x"})
+    assert resp.status_code == 401
+
+
+def test_api_score_override_requires_reason(client):
+    posting_id = _seed_scored_posting(client)
+    resp = client.patch(
+        f"/api/postings/{posting_id}/score-override", json={"total": 78},
+        auth=(DASH_USER, DASH_PASS),
+    )
+    assert resp.status_code == 400
+
+
+def test_api_score_override_moves_posting_into_queue(client, fake_db):
+    posting_id = _seed_scored_posting(client)
+    resp = client.patch(
+        f"/api/postings/{posting_id}/score-override",
+        json={"total": 90, "reason": "rubric undercounted the automation overlap"},
+        auth=(DASH_USER, DASH_PASS),
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["human_override_total"] == 90
+    assert body["human_override_reason"] == "rubric undercounted the automation overlap"
+
+    p = next(x for x in client.get("/api/postings", auth=(DASH_USER, DASH_PASS)).json() if x["id"] == posting_id)
+    assert p["stage"] == "queue"
+    assert p["score"] == 90
+    assert p["aiScore"] != 90  # original AI total untouched
+    assert any(e["event"] == "human_override" for e in fake_db.events)
+
+
+def test_api_score_override_clear_restores_ai_score(client, fake_db):
+    posting_id = _seed_scored_posting(client)
+    client.patch(
+        f"/api/postings/{posting_id}/score-override", json={"total": 90, "reason": "x"},
+        auth=(DASH_USER, DASH_PASS),
+    )
+    resp = client.patch(
+        f"/api/postings/{posting_id}/score-override", json={"clear": True},
+        auth=(DASH_USER, DASH_PASS),
+    )
+    assert resp.status_code == 200
+    p = next(x for x in client.get("/api/postings", auth=(DASH_USER, DASH_PASS)).json() if x["id"] == posting_id)
+    assert p["score"] == p["aiScore"]
+    assert p["scoreOverride"] is None
+
+
+def test_api_score_override_404_when_not_scored(client):
+    resp = client.patch(
+        "/api/postings/999999/score-override", json={"total": 80, "reason": "x"},
+        auth=(DASH_USER, DASH_PASS),
+    )
+    assert resp.status_code == 404
+
+
 # ---- metrics ----
 
 

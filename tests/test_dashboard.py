@@ -80,6 +80,32 @@ def test_posting_row_to_p_returns_none_without_a_score():
     assert posting_row_to_p(row, co_count=1) is None
 
 
+def test_posting_row_to_p_no_override_uses_ai_total():
+    p = posting_row_to_p(SAMPLE_ROW, co_count=1)
+    assert p["score"] == 88
+    assert p["aiScore"] == 88
+    assert p["scoreOverride"] is None
+
+
+def test_posting_row_to_p_override_becomes_effective_score():
+    score = {
+        **SAMPLE_SCORE, "total": 51,
+        "human_override_total": 78, "human_override_reason": "JD reads as a real fit, not noise",
+    }
+    row = {**SAMPLE_ROW, "scores": [score]}
+    p = posting_row_to_p(row, co_count=1)
+    assert p["score"] == 78  # effective score used for queue/watch bucketing
+    assert p["aiScore"] == 51  # original AI total preserved, not overwritten
+    assert p["scoreOverride"] == {"total": 78, "reason": "JD reads as a real fit, not noise"}
+
+
+def test_postings_to_dashboard_p_override_moves_posting_into_queue():
+    score = {**SAMPLE_SCORE, "total": 51, "human_override_total": 78, "human_override_reason": "underscored"}
+    row = {**SAMPLE_ROW, "scores": [score]}
+    result = postings_to_dashboard_p([row], score_threshold=70)
+    assert result[0]["stage"] == "queue"
+
+
 def test_postings_to_dashboard_p_buckets_queue_vs_watch():
     high = SAMPLE_ROW
     low_score = {**SAMPLE_SCORE, "total": 60, "dimensions": {

@@ -258,6 +258,41 @@ def api_application_patch(
     return updated
 
 
+@app.patch("/api/postings/{posting_id}/score-override", dependencies=[Depends(require_auth)])
+def api_score_override(
+    posting_id: int, body: dict[str, Any], db: SightlineDB = Depends(get_db)
+) -> dict:
+    """Manual score correction — separate from Approve/Reject/Defer, which
+    are application state, not scoring accuracy. Moves the posting between
+    queue/watch immediately (dashboard.py uses the override as the posting's
+    effective score); the reason is calibration data toward a future
+    rubric_version revision, not an automatic rubric change. Pass
+    {"clear": true} to remove a previously-set override."""
+    try:
+        posting = db.get_posting(posting_id)
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    scores = posting.get("scores") or []
+    if not scores:
+        raise HTTPException(status_code=404, detail=f"posting {posting_id} has not been scored yet")
+    score = scores[0]
+
+    if body.get("clear"):
+        total, reason = None, None
+    else:
+        total = body.get("total")
+        reason = body.get("reason")
+        if total is None or not reason:
+            raise HTTPException(status_code=400, detail="total and reason are both required to set an override")
+
+    updated = db.override_score(score["id"], total, reason)
+    db.log_event(
+        entity_type="score", entity_id=score["id"], event="human_override",
+        payload={"posting_id": posting_id, "old_total": score["total"], "new_total": total, "reason": reason},
+    )
+    return updated
+
+
 @app.post("/webhooks/theirstack")
 async def theirstack_webhook(
     request: Request,

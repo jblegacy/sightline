@@ -239,6 +239,29 @@ class SightlineDB:
         resp.raise_for_status()
         return resp.json()
 
+    def override_score(self, score_id: int, total: int | None, reason: str | None) -> dict[str, Any]:
+        """Corrects the effective score for a posting without touching the
+        AI's original `total` — that stays the calibration baseline. Pass
+        total=None to clear a previously-set override."""
+        import datetime as _dt
+
+        resp = self._client.patch(
+            "/scores", params={"id": f"eq.{score_id}"},
+            headers={"Prefer": "return=representation"},
+            json={
+                "human_override_total": total,
+                "human_override_reason": reason,
+                "human_override_at": (
+                    _dt.datetime.now(_dt.timezone.utc).isoformat() if total is not None else None
+                ),
+            },
+        )
+        resp.raise_for_status()
+        rows = resp.json()
+        if not rows:
+            raise LookupError(f"score {score_id} not found")
+        return rows[0]
+
     def upsert_application(self, fields: dict[str, Any]) -> dict[str, Any]:
         """One row per posting — Defer, Reject, Mark submitted, the status
         dropdown, notes, and Record final on the dashboard all funnel here.

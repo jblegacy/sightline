@@ -498,13 +498,18 @@ function rowHTML(p){
       <div>
         <section><h4>Rubric breakdown</h4>
           <table class="dimtable">${DIMS.map(([nm,max],i)=>`<tr><td>${nm}</td><td>${p.d[i]} / ${max}</td></tr>`).join('')}
-          <tr><td><b>Total</b></td><td>${p.score}</td></tr></table>
+          <tr><td><b>Total (AI)</b></td><td>${p.aiScore}</td></tr>
+          ${p.scoreOverride?`<tr><td><b>Override</b></td><td>${p.scoreOverride.total}</td></tr>`:''}
+          </table>
+          ${p.scoreOverride?`<p class="hint" style="margin:8px 0 0">Overridden — ${esc(p.scoreOverride.reason)}</p>`:''}
         </section>
         <section><h4>Actions</h4>
           <div class="acts">
             ${p.stage==='queue'||p.stage==='watch'?`<button class="btn go" data-act="approve">Approve → build resume</button>
             <button class="btn" data-act="defer">Defer</button>
-            <button class="btn ghost" data-act="reject">Reject</button>`:
+            <button class="btn ghost" data-act="reject">Reject</button>
+            <button class="btn ghost" data-act="override-score">${p.scoreOverride?'Change score override':'Override score'}</button>
+            ${p.scoreOverride?'<button class="btn ghost" data-act="clear-override">Clear override</button>':''}`:
             `<span class="pill submitted">approved</span>`}
           </div>
         </section>
@@ -739,6 +744,21 @@ document.addEventListener('click',e=>{
       patchApplication(p.id,{status:'deferred'})
         .then(ok=>{if(ok){toast('Deferred to watchlist');reloadPostings()}});
       return}
+    if(act==='override-score'){
+      const nt=prompt(`Corrected score (AI scored this ${p.aiScore}):`,p.scoreOverride?p.scoreOverride.total:p.score);
+      if(nt===null)return;
+      const total=+nt;
+      if(!Number.isFinite(total)){toast('Enter a number');return}
+      const reason=prompt('Why? (this becomes calibration data toward a future rubric revision)',p.scoreOverride?p.scoreOverride.reason:'');
+      if(reason===null)return;
+      if(!reason.trim()){toast('A reason is required — this is the calibration signal');return}
+      patchScoreOverride(p.id,{total,reason})
+        .then(ok=>{if(ok){toast('Score overridden — moved based on the corrected total');reloadPostings()}});
+      return}
+    if(act==='clear-override'){
+      patchScoreOverride(p.id,{clear:true})
+        .then(ok=>{if(ok){toast('Override cleared — back to the AI score');reloadPostings()}});
+      return}
     return}
 
   const dl=e.target.dataset.dl;
@@ -882,6 +902,12 @@ async function patchSearchProfile(profileId,fields){
   if(i>=0)PROFILES[i]=updated; else PROFILES.push(updated);
   if(profileId===ACTIVE)CFG=updated;
   return updated;
+}
+
+async function patchScoreOverride(id,fields){
+  const resp=await fetch(`/api/postings/${id}/score-override`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(fields)});
+  if(!resp.ok){const err=await resp.json().catch(()=>({detail:'save failed'}));toast('Override failed — '+(err.detail||resp.status));console.error('patchScoreOverride failed',err);return null}
+  return resp.json();
 }
 
 async function patchApplication(id,fields){
