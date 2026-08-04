@@ -90,11 +90,15 @@ class FakeDB:
             matching_scores = [s for s in self.scores if s.get("posting_id") == row["id"]]
             matching_variants = [v for v in self.variants if v.get("posting_id") == row["id"]]
             matching_outreach = [o for o in self.outreach if o.get("posting_id") == row["id"]]
-            matching_applications = [a for a in self.applications if a.get("posting_id") == row["id"]]
+            # applications.posting_id is unique — PostgREST embeds it as a
+            # to-one object, not an array (see sightline/dashboard.py).
+            application = next(
+                (a for a in self.applications if a.get("posting_id") == row["id"]), None
+            )
             result.append({
                 **row, "companies": {"name": "Fake Co"}, "scores": matching_scores,
                 "variants": matching_variants, "outreach": matching_outreach,
-                "applications": matching_applications,
+                "applications": application,
             })
         return result
 
@@ -123,13 +127,13 @@ class FakeDB:
                 matching_scores = [s for s in self.scores if s.get("posting_id") == posting_id]
                 matching_variants = [v for v in self.variants if v.get("posting_id") == posting_id]
                 matching_outreach = [o for o in self.outreach if o.get("posting_id") == posting_id]
-                matching_applications = [
-                    a for a in self.applications if a.get("posting_id") == posting_id
-                ]
+                application = next(
+                    (a for a in self.applications if a.get("posting_id") == posting_id), None
+                )
                 return {
                     **row, "companies": {"name": "Fake Co"}, "scores": matching_scores,
                     "variants": matching_variants, "outreach": matching_outreach,
-                    "applications": matching_applications,
+                    "applications": application,
                 }
         raise LookupError(f"posting {posting_id} not found")
 

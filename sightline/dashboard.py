@@ -103,11 +103,13 @@ def posting_row_to_p(row: dict[str, Any], co_count: int) -> dict[str, Any] | Non
     company = row.get("companies") or {}
     variants = row.get("variants") or []
     outreach = row.get("outreach") or []
-    applications = row.get("applications") or []
+    # applications.posting_id is unique (migration 0016), so PostgREST embeds
+    # it as a to-one object, not an array like variants/outreach above.
+    application = row.get("applications") or None
     variant = variants[0] if variants else None
 
-    if applications:
-        app = _application_to_app(applications[0], variant)
+    if application:
+        app = _application_to_app(application, variant)
     elif variant:
         app = _variant_to_app(variant)
     else:
