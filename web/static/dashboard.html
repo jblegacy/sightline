@@ -240,6 +240,11 @@ table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .db.kept{border-left-color:var(--auto)}
 .db.dropped{border-left-color:var(--rule);opacity:.42}
 .db.promoted{border-left-color:var(--gate);background:var(--gate-soft)}
+.mkw{font-family:var(--mono);font-size:10.5px;color:var(--auto);margin-top:4px}
+.mkw.none{color:var(--muted)}
+.jdbox{border:1px solid var(--rule);background:var(--panel2);padding:10px 12px;margin-bottom:10px}
+.jdbox summary{cursor:pointer;font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.jdbox[open] summary{margin-bottom:4px}
 .db .why{font-family:var(--mono);font-size:9.5px;color:var(--gate);letter-spacing:.05em;margin-top:4px;display:block}
 .dlegend{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:14px}
 .dlegend span{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10.5px;color:var(--muted)}
@@ -646,7 +651,21 @@ async function renderDiff(id){
   $('#mtitle').textContent=`${p.co} — ${p.ti} · ${vname} variant`;
   const sel=v.sections||[];
   const kept=sel.reduce((n,s2)=>n+s2.order.length,0), drop=sel.reduce((n,s2)=>n+s2.dropped.length,0);
+  const kwChips=(v.jd_keywords||[]).map(k=>`<span class="chip">${esc(k)}</span>`).join('')||'<span class="chip">none extracted</span>';
+  const matchTags=b=>(b.matched_keywords&&b.matched_keywords.length)
+    ?`<div class="mkw">matched: ${b.matched_keywords.map(esc).join(', ')}</div>`
+    :'<div class="mkw none">no JD keyword match</div>';
   $('#mbody').innerHTML=`
+   <details class="jdbox" open>
+     <summary>Job description</summary>
+     <p style="white-space:pre-wrap;font-size:12.5px;margin:8px 0 0">${esc(v.jd_text||'Not available.')}</p>
+   </details>
+   <section style="margin:14px 0">
+     <h4 style="margin:0 0 5px">Why this fits — the rubric's own rationale</h4>
+     <p style="margin:0 0 10px;font-size:13px">${esc(v.rationale||'Not available.')}</p>
+     <h4 style="margin:0 0 5px">Keywords mirrored from the JD</h4>
+     <div class="chips">${kwChips}</div>
+   </section>
    <div class="dlegend">
      <span><i style="background:var(--auto)"></i>Included</span>
      <span><i style="background:var(--rule)"></i>Dropped for this application</span>
@@ -657,13 +676,13 @@ async function renderDiff(id){
        ${sel.map(sc=>`<div class="dsec">${esc(sc.org)}</div>`+
          [...sc.order,...sc.dropped].map(b=>`<div class="db"><span class="ref">${esc(b.ref)}</span>${esc(b.text)}</div>`).join('')).join('')}
      </div>
-     <div class="dcol new"><h4>Tailored for this posting</h4>
+     <div class="dcol new"><h4>Tailored for this posting — why each line stayed or went</h4>
        ${sel.map(sc=>`<div class="dsec">${esc(sc.org)}</div>`+
-         sc.order.map(b=>`<div class="db kept"><span class="ref">${esc(b.ref)}</span>${esc(b.text)}</div>`).join('')+
-         sc.dropped.map(b=>`<div class="db dropped"><span class="ref">${esc(b.ref)} · dropped</span>${esc(b.text)}</div>`).join('')).join('')}
+         sc.order.map(b=>`<div class="db kept"><span class="ref">${esc(b.ref)}</span>${esc(b.text)}${matchTags(b)}</div>`).join('')+
+         sc.dropped.map(b=>`<div class="db dropped"><span class="ref">${esc(b.ref)} · dropped</span>${esc(b.text)}${matchTags(b)}</div>`).join('')).join('')}
      </div>
    </div>
-   <p class="hint" style="margin:16px 0 0">Assembly is selection only — every line above exists verbatim in the approved library. Nothing was rewritten for this posting.</p>`;
+   <p class="hint" style="margin:16px 0 0">Assembly is selection only — every line above exists verbatim in the approved library, ranked by real keyword overlap with the JD. Nothing was rewritten for this posting.</p>`;
   $('#mask').classList.add('on');
 }
 

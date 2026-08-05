@@ -249,10 +249,21 @@ def select_bullets(
     than 3) per employer section, highest relevance first. Ported from
     prototype/sightline-dashboard.html's selectBullets() — same algorithm,
     real data. Selection only; bullet text is never modified."""
-    kw = [k.lower() for k in keywords]
+    kw = [(k.lower(), k) for k in keywords]  # (comparison form, original casing)
 
-    def hit(tags: list[str]) -> int:
-        return sum(1 for t in tags if any(k in t.lower() or t.lower() in k for k in kw))
+    def matched(tags: list[str]) -> list[str]:
+        # which JD keywords this bullet's tags actually hit — the real,
+        # mechanical "why" behind keep/drop, not an invented explanation.
+        # Returned in the JD's own casing, matching the keyword chips shown
+        # alongside them.
+        out, seen = [], set()
+        for t in tags:
+            tl = t.lower()
+            for k_lower, k_orig in kw:
+                if (k_lower in tl or tl in k_lower) and k_lower not in seen:
+                    out.append(k_orig)
+                    seen.add(k_lower)
+        return out
 
     by_org: dict[str, list[dict[str, Any]]] = {}
     for b in bullets:
@@ -270,14 +281,19 @@ def select_bullets(
         group = by_org.get(org)
         if not group:
             continue
-        scored = [(hit(b.get("tags") or []), i, b) for i, b in enumerate(group)]
+        scored = [(matched(b.get("tags") or []), i, b) for i, b in enumerate(group)]
         keep_n = max(3, math.ceil(len(group) * 0.7))
-        ranked = sorted(scored, key=lambda x: (-x[0], x[1]))
+        ranked = sorted(scored, key=lambda x: (-len(x[0]), x[1]))
         kept, dropped = ranked[:keep_n], ranked[keep_n:]
+
+        def with_match(item: tuple[list[str], int, dict[str, Any]]) -> dict[str, Any]:
+            match_kw, _, b = item
+            return {**b, "matched_keywords": match_kw}
+
         sections.append({
             "org": org,
-            "order": [b for _, _, b in kept],
-            "dropped": [b for _, _, b in sorted(dropped, key=lambda x: x[1])],
+            "order": [with_match(item) for item in kept],
+            "dropped": [with_match(item) for item in sorted(dropped, key=lambda x: x[1])],
         })
     return sections
 
@@ -485,15 +501,25 @@ def assemble(
         },
     )
     signed_url = db.create_signed_url(STORAGE_BUCKET, path)
-    return {**variant_row, "signed_url": signed_url, "sections": _serialize_sections(sections)}
+    return {
+        **variant_row, "signed_url": signed_url, "sections": _serialize_sections(sections),
+        "jd_text": posting.get("jd_text"), "jd_keywords": score.get("keywords") or [],
+        "rationale": score.get("rationale") or "",
+    }
 
 
 def _serialize_sections(sections: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [
         {
             "org": sec["org"],
-            "order": [{"ref": b["ref"], "text": b["text"]} for b in sec["order"]],
-            "dropped": [{"ref": b["ref"], "text": b["text"]} for b in sec["dropped"]],
+            "order": [
+                {"ref": b["ref"], "text": b["text"], "matched_keywords": b.get("matched_keywords") or []}
+                for b in sec["order"]
+            ],
+            "dropped": [
+                {"ref": b["ref"], "text": b["text"], "matched_keywords": b.get("matched_keywords") or []}
+                for b in sec["dropped"]
+            ],
         }
         for sec in sections
     ]
@@ -516,4 +542,8 @@ def variant_detail(db: SightlineDB, posting_id: int) -> dict[str, Any]:
     bullets = db.get_bullets_full()
     sections = select_bullets(bullets, variant_row["kind"], score.get("keywords") or [])
     signed_url = db.create_signed_url(STORAGE_BUCKET, variant_row["storage_path"])
-    return {**variant_row, "signed_url": signed_url, "sections": _serialize_sections(sections)}
+    return {
+        **variant_row, "signed_url": signed_url, "sections": _serialize_sections(sections),
+        "jd_text": posting.get("jd_text"), "jd_keywords": score.get("keywords") or [],
+        "rationale": score.get("rationale") or "",
+    }

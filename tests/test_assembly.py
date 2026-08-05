@@ -174,6 +174,7 @@ def make_posting(variant="engineer", verified=True):
         "id": 5,
         "title": "AI Automation Engineer",
         "companies": {"id": 1, "name": "Acme"},
+        "jd_text": "Looking for someone to run production AI systems.",
         "scores": [{
             "rationale": "Strong overlap.",
             "keywords": ["production"],
@@ -222,6 +223,21 @@ def test_assemble_happy_path_uploads_and_records_variant():
     assert any(e[1] == "assembled" for e in db.events)
 
     assert result["sections"][0]["org"] == "BEAM LEGACY GROUP"
+
+
+def test_assemble_returns_jd_alignment_context():
+    posting, bullets = make_posting(verified=True)
+    db = FakeDB(posting, bullets)
+    result = assemble(db, FakeAnthropic(), 5)
+
+    assert result["jd_text"] == "Looking for someone to run production AI systems."
+    assert result["jd_keywords"] == ["production"]
+    assert result["rationale"] == "Strong overlap."
+
+    order = {b["ref"]: b for b in result["sections"][0]["order"]}
+    assert order["BL-101"]["matched_keywords"] == ["production"]  # tag "production" hits the JD keyword
+    assert order["BL-102"]["matched_keywords"] == []  # tag "llm" doesn't
+    assert order["BL-103"]["matched_keywords"] == []  # tag "qa" doesn't
     assert {b["ref"] for b in result["sections"][0]["order"]} == {"BL-101", "BL-102", "BL-103"}
 
 
