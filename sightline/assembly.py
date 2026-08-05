@@ -303,9 +303,13 @@ def render_docx(variant: str, sections: list[dict[str, Any]]) -> bytes:
     doc = Document()
     style = doc.styles["Normal"]
     style.font.name = "Calibri"
-    style.font.size = Pt(10)
+    # 10pt / 0.5in margins packed more onto a page but sit outside what 2026
+    # ATS-formatting guidance calls safe (11-12pt body, 0.75-1in margins) —
+    # tight margins and small type are what get flagged, not page count (1-2
+    # pages is explicitly fine for someone with real experience).
+    style.font.size = Pt(11)
     for s in doc.sections:
-        s.left_margin = s.right_margin = s.top_margin = s.bottom_margin = Inches(0.5)
+        s.left_margin = s.right_margin = s.top_margin = s.bottom_margin = Inches(0.75)
 
     def para(text: str, *, size: float, bold: bool = False, italic: bool = False,
               before: float = 0, after: float = 5) -> None:
@@ -323,7 +327,7 @@ def render_docx(variant: str, sections: list[dict[str, Any]]) -> bytes:
         p.paragraph_format.space_after = Pt(5)
         r = p.add_run(text.upper())
         r.bold = True
-        r.font.size = Pt(10.5)
+        r.font.size = Pt(11)
         pbdr = OxmlElement("w:pBdr")
         bottom = OxmlElement("w:bottom")
         bottom.set(qn("w:val"), "single")
@@ -338,9 +342,9 @@ def render_docx(variant: str, sections: list[dict[str, Any]]) -> bytes:
         p.paragraph_format.space_after = Pt(3.5)
         r1 = p.add_run(f"{label}: ")
         r1.bold = True
-        r1.font.size = Pt(10)
+        r1.font.size = Pt(11)
         r2 = p.add_run(text)
-        r2.font.size = Pt(10)
+        r2.font.size = Pt(11)
 
     def employer_line(org: str, location: str, dates: str) -> None:
         p = doc.add_paragraph()
@@ -349,27 +353,27 @@ def render_docx(variant: str, sections: list[dict[str, Any]]) -> bytes:
         p.paragraph_format.tab_stops.add_tab_stop(Inches(7.0), WD_TAB_ALIGNMENT.RIGHT)
         r1 = p.add_run(org)
         r1.bold = True
-        r1.font.size = Pt(10.5)
+        r1.font.size = Pt(11)
         r2 = p.add_run(f"  |  {location}")
-        r2.font.size = Pt(10)
+        r2.font.size = Pt(11)
         r3 = p.add_run(f"\t{dates}")
-        r3.font.size = Pt(10)
+        r3.font.size = Pt(11)
 
     def bullet_line(text: str) -> None:
         p = doc.add_paragraph(style="List Bullet")
         p.paragraph_format.space_after = Pt(3)
         r = p.add_run(text)
-        r.font.size = Pt(10)
+        r.font.size = Pt(11)
 
-    para(NAME, size=15, bold=True, after=2)
-    para(CONTACT, size=9.5, after=8)
-    para(content["headline"], size=10.5, bold=True, after=8)
+    para(NAME, size=16, bold=True, after=2)
+    para(CONTACT, size=10, after=8)
+    para(content["headline"], size=11, bold=True, after=8)
 
     section_header("PROFESSIONAL SUMMARY")
-    para(content["summary"], size=10)
+    para(content["summary"], size=11)
 
     section_header("CORE COMPETENCIES")
-    para(content["competencies"], size=10)
+    para(content["competencies"], size=11)
 
     section_header("TECHNICAL SKILLS")
     for label, text in content["skills"]:
@@ -381,15 +385,15 @@ def render_docx(variant: str, sections: list[dict[str, Any]]) -> bytes:
         variant_meta = meta[variant]
         dates = _format_dates(sec["order"][0]["source_period"]) if sec["order"] else ""
         employer_line(sec["org"], meta["location"], dates)
-        para(variant_meta["title"], size=10, bold=True, italic=True, after=3)
+        para(variant_meta["title"], size=11, bold=True, italic=True, after=3)
         if variant_meta.get("scope"):
-            para(variant_meta["scope"], size=10, after=4)
+            para(variant_meta["scope"], size=11, after=4)
         for b in sec["order"]:
             bullet_line(b["text"])
 
     section_header("EDUCATION")
     for line in EDUCATION:
-        para(line, size=10, after=2)
+        para(line, size=11, after=2)
 
     buf = io.BytesIO()
     doc.save(buf)
