@@ -389,6 +389,23 @@ def test_api_cover_letter_unknown_posting_404s(client):
     assert resp.status_code == 404
 
 
+def test_api_cover_letter_502s_on_empty_generation(client, fake_db):
+    # Found live: extended thinking ate the whole token budget and chat_call
+    # returned "" — that must surface as a 502, never a silently-saved
+    # broken artifact.
+    class EmptyAnthropic(FakeAnthropic):
+        def chat_call(self, **kwargs):
+            return "", 0.01
+
+    posting_id = _seed_scored_posting(client)
+    client.post(f"/api/postings/{posting_id}/assemble", json={}, auth=(DASH_USER, DASH_PASS))
+
+    app.dependency_overrides[get_anthropic] = lambda: EmptyAnthropic()
+    resp = client.post(f"/api/postings/{posting_id}/cover-letter", json={}, auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 502
+    assert "no usable text" in resp.json()["detail"]
+
+
 def test_api_variant_detail_includes_cover_letter_signed_url_once_generated(client, fake_db):
     posting_id = _seed_scored_posting(client)
     client.post(f"/api/postings/{posting_id}/assemble", json={}, auth=(DASH_USER, DASH_PASS))
@@ -626,7 +643,7 @@ def test_api_answers_chat_returns_reply(client):
     )
     assert resp.status_code == 200
     body = resp.json()
-    assert body["reply"] == "Here's a draft answer grounded in your bullets."
+    assert body["reply"] == "Here's a draft answer grounded in your verified bullets."
     assert body["cost_usd"] == 0.008
 
 
