@@ -28,18 +28,28 @@ talking around them — don't oversell.
 Target 250-400 words total, one page. Hiring managers spend under 30 seconds on a cover \
 letter — a tight, specific 300 words consistently beats a thorough 700.
 
+Before writing, identify the JD's actual stated responsibility categories (postings are often \
+structured in named sections, e.g. "Business Process Analysis" / "Agent Strategy & Design" / \
+"Adoption Measurement" — use whatever the JD's own structure is). Do not silently skip the \
+category the candidate matches worst, even if it means the letter leans more on what's honestly \
+missing there than on a strong bullet — a letter that ignores the JD's single most-detailed \
+responsibility section reads as not having read the posting, which is worse than admitting a gap.
+
 Write 3-4 tight paragraphs, separated by blank lines:
 1. Opening hook — name the role and one concrete, specific reason it's a fit for THIS posting \
 and THIS company (reference something real from the JD or company signals, not generic \
 enthusiasm — "I'm excited to apply" tells the reader nothing they can't assume).
 2. One to two body paragraphs connecting 2-3 of the verified bullets below directly to what \
-this posting is actually asking for. Don't just restate accomplishments — show what they mean \
-for THIS team: what you'd be able to contribute or unblock given what they're hiring for. If \
-there's a real, material gap, name it plainly in one sentence rather than routing around it \
-— specificity and honesty read as more credible than a resume rehash, and recruiters increasingly \
-say generic, template-shaped letters are what actually gets an application rejected, not the \
-use of an AI drafting tool.
-3. Short close — no restating the whole letter, no "I look forward to hearing from you" filler.
+this posting is actually asking for, covering the JD's actual responsibility categories rather \
+than only the ones with the easiest bullet match. Don't just restate accomplishments — show \
+what they mean for THIS team: what you'd be able to contribute or unblock given what they're \
+hiring for. If there's a real, material gap against a category the JD clearly cares about \
+(including one with no matching bullet at all), name it plainly in one sentence rather than \
+omitting it — specificity and honesty read as more credible than a resume rehash, and recruiters \
+increasingly say generic, template-shaped letters are what actually gets an application \
+rejected, not the use of an AI drafting tool.
+3. Short close — forward-looking (what you'd bring to the team from here), not a recap of the \
+gap you just named and not "I look forward to hearing from you" filler.
 
 No corporate throat-clearing, no restating the resume verbatim, no invented personality or \
 passion claims, no sentence that could be pasted into any other cover letter unchanged. Plain, \
@@ -60,7 +70,11 @@ def _format_bullets(bullets: list[dict[str, Any]]) -> str:
 
 def build_user_content(posting: dict[str, Any], score: dict[str, Any]) -> str:
     company = (posting.get("companies") or {}).get("name", "this company")
-    jd_excerpt = (posting.get("jd_text") or "")[:3000]
+    # 3000 chars was cutting off later JD sections (qualifications, specific
+    # responsibility categories) on longer postings — the new instruction to
+    # work through the JD's own stated responsibility categories only works
+    # if those categories are actually still in view.
+    jd_excerpt = (posting.get("jd_text") or "")[:6000]
     return f"""Posting: {posting.get('title')} at {company}
 
 JD:
@@ -98,7 +112,7 @@ def generate_cover_letter(
     )
     user_content = build_user_content(posting, score)
     text, cost = client.chat_call(
-        model=MODEL, system=system, messages=[{"role": "user", "content": user_content}], max_tokens=900,
+        model=MODEL, system=system, messages=[{"role": "user", "content": user_content}], max_tokens=1500,
     )
     return text.strip(), cost
 
