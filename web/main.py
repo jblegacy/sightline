@@ -14,6 +14,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
+from sightline.answers import chat_reply, next_ref
 from sightline.anthropic_client import AnthropicClient
 from sightline.assembly import assemble, variant_detail
 from sightline.budget import used_today
@@ -291,6 +292,61 @@ def api_score_override(
         payload={"posting_id": posting_id, "old_total": score["total"], "new_total": total, "reason": reason},
     )
     return updated
+
+
+@app.get("/api/answers", dependencies=[Depends(require_auth)])
+def api_answers(db: SightlineDB = Depends(get_db)) -> list[dict]:
+    return db.get_answers()
+
+
+@app.post("/api/answers/chat", dependencies=[Depends(require_auth)])
+def api_answers_chat(
+    body: dict[str, Any],
+    db: SightlineDB = Depends(get_db),
+    anthropic: AnthropicClient = Depends(get_anthropic),
+) -> dict:
+    """One turn of the answer workbench chat. Stateless server-side — the
+    caller resends the full message history each turn; nothing about the
+    conversation itself is persisted, only whatever gets explicitly saved
+    via /api/answers/save."""
+    messages = body.get("messages")
+    if not messages:
+        raise HTTPException(status_code=400, detail="messages is required")
+
+    posting = None
+    posting_id = body.get("posting_id")
+    if posting_id:
+        try:
+            posting = db.get_posting(posting_id)
+        except LookupError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+
+    bullets = db.get_bullets_full()
+    answers = db.get_answers()
+    reply, cost_usd = chat_reply(anthropic, bullets, answers, posting, messages)
+    return {"reply": reply, "cost_usd": round(cost_usd, 5)}
+
+
+@app.post("/api/answers/save", dependencies=[Depends(require_auth)])
+def api_answers_save(body: dict[str, Any], db: SightlineDB = Depends(get_db)) -> dict:
+    text = body.get("text")
+    question_type = body.get("question_type")
+    if not text or not question_type:
+        raise HTTPException(status_code=400, detail="text and question_type are both required")
+
+    ref = body.get("ref")
+    if not ref:
+        ref = next_ref(db.get_answers())
+
+    saved = db.upsert_answer({
+        "ref": ref,
+        "question_type": question_type,
+        "text": text,
+        "tags": body.get("tags") or [],
+        "status": body.get("status") or "ready",
+    })
+    db.log_event(entity_type="answer", event="saved", payload={"ref": ref, "question_type": question_type})
+    return saved
 
 
 @app.post("/webhooks/theirstack")

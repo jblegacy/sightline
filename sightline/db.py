@@ -248,6 +248,22 @@ class SightlineDB:
         resp.raise_for_status()
         return resp.json()
 
+    def get_answers(self) -> list[dict[str, Any]]:
+        resp = self._client.get("/answers", params={"select": "*", "order": "ref"})
+        resp.raise_for_status()
+        return resp.json()
+
+    def upsert_answer(self, fields: dict[str, Any]) -> dict[str, Any]:
+        """answers.ref is unique (migration 0002) — upsert on that, same
+        pattern as applications.posting_id."""
+        resp = self._client.post(
+            "/answers", params={"on_conflict": "ref"},
+            headers={"Prefer": "resolution=merge-duplicates,return=representation"},
+            json=fields,
+        )
+        resp.raise_for_status()
+        return resp.json()[0]
+
     def override_score(self, score_id: int, total: int | None, reason: str | None) -> dict[str, Any]:
         """Corrects the effective score for a posting without touching the
         AI's original `total` — that stays the calibration baseline. Pass
