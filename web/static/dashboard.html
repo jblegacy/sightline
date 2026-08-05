@@ -1091,6 +1091,7 @@ async function reloadPostings(){
   try{
     P=await fetch('/api/postings').then(r=>{if(!r.ok)throw new Error('postings '+r.status);return r.json()});
     drawAll();
+    populateAnsPostingPicker();
   }catch(e){toast('Refresh failed — see console');console.error('reloadPostings failed:',e);}
 }
 
