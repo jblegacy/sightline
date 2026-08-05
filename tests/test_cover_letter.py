@@ -3,12 +3,12 @@ from unittest.mock import MagicMock
 from docx import Document as DocxDocument
 
 from sightline.cover_letter import (
-    VOICE_RULES,
     build_user_content,
     generate_cover_letter,
     greeting_for,
     render_cover_letter_docx,
 )
+from sightline.voice import VOICE_RULES
 
 BULLETS = [
     {"ref": "BL-001", "text": "Built the automation platform.", "status": "verified"},

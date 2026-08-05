@@ -1,4 +1,5 @@
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -9,6 +10,7 @@ from sightline.outreach import (
     select_metric_bullet,
 )
 from sightline.provenance import ProvenanceError
+from sightline.voice import VOICE_RULES
 from tests.test_ingest import FakeAnthropic, FakeDB
 
 
@@ -75,6 +77,20 @@ def test_generate_drafts_sends_signal_and_metric_to_anthropic():
     drafts, cost = generate_drafts(anthropic, posting, score, "Jane Doe", "VP Eng", metric, {})
     assert set(drafts.keys()) == {"note", "message", "subject", "email"}
     assert cost == 0.006
+
+
+def test_generate_drafts_includes_voice_rules_and_reference():
+    posting = {"title": "AI Engineer", "companies": {"name": "Acme"}}
+    score = {"company_signals": ["Raised $10M"], "reports_to": "CTO"}
+    metric = make_bullet("BL-002", ["engineer"], ["llm"])
+    answers = [{"question_type": "tell_me_about_a_failure", "status": "ready",
+                "text": "I'm using that word generously - " + ("x" * 220)}]
+    fake_client = MagicMock()
+    fake_client.structured_call.return_value = ({"note": "n", "message": "m", "subject": "s", "email": "e"}, 0.01)
+    generate_drafts(fake_client, posting, score, "Jane Doe", "VP Eng", metric, {}, answers)
+    sent_system = fake_client.structured_call.call_args.kwargs["system"]
+    assert VOICE_RULES in sent_system
+    assert "I'm using that word generously" in sent_system
 
 
 # ---- assemble_outreach orchestration ----
