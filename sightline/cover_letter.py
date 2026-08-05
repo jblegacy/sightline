@@ -29,6 +29,14 @@ talking around them — don't oversell.
 Target 250-400 words total, one page. Hiring managers spend under 30 seconds on a cover \
 letter — a tight, specific 300 words consistently beats a thorough 700.
 
+Confident, not cocky. State what you did and let it speak for itself — never tell the reader \
+what the role "actually" is, what they're "actually" asking for beneath the posting's own words, \
+or frame yourself as seeing something about the job that they don't. Never compare yourself to \
+other candidates ("further than most candidates," "unlike other applicants") — you have no idea \
+who else applied, and the claim reads as arrogant rather than as evidence. Describe the posting's \
+ask in its own terms, then show the matching fact — don't editorialize about how well it maps or \
+how rare your background is.
+
 Before writing, identify the JD's actual stated responsibility categories (postings are often \
 structured in named sections, e.g. "Business Process Analysis" / "Agent Strategy & Design" / \
 "Adoption Measurement" — use whatever the JD's own structure is). Do not silently skip the \
@@ -41,14 +49,15 @@ Write 3-4 tight paragraphs, separated by blank lines:
 and THIS company (reference something real from the JD or company signals, not generic \
 enthusiasm — "I'm excited to apply" tells the reader nothing they can't assume).
 2. One to two body paragraphs connecting 2-3 of the verified bullets below directly to what \
-this posting is actually asking for, covering the JD's actual responsibility categories rather \
-than only the ones with the easiest bullet match. Don't just restate accomplishments — show \
-what they mean for THIS team: what you'd be able to contribute or unblock given what they're \
-hiring for. If there's a real, material gap against a category the JD clearly cares about \
-(including one with no matching bullet at all), name it plainly in one sentence rather than \
-omitting it — specificity and honesty read as more credible than a resume rehash, and recruiters \
-increasingly say generic, template-shaped letters are what actually gets an application \
-rejected, not the use of an AI drafting tool.
+this posting asks for, covering the JD's own responsibility categories rather than only the \
+ones with the easiest bullet match. Don't just restate accomplishments — show what they mean \
+for this team, what it would let them stop worrying about. If there's a real, material gap \
+against something the JD clearly cares about (including a category with no matching bullet at \
+all), fold it into the same paragraph as a brief, factual aside next to the closest transferable \
+skill — one clause, not its own paragraph, and not prefaced by any version of "I'll be honest," \
+"to be straight with you," or "I don't want to overstate this." Those preambles are what turn a \
+fact into a confession. State the gap once, plainly, then move straight to what does transfer — \
+never spend more of the letter on the gap than on what's actually being offered.
 3. Short close — forward-looking (what you'd bring to the team from here), not a recap of the \
 gap you just named and not "I look forward to hearing from you" filler.
 

@@ -16,7 +16,9 @@ own unedited writing, not a generic style guide:
 
 1. Use spaced hyphens " - " as connectors, the way a comma, colon, or dash would normally be \
 used. NEVER use an em dash (—) or en dash (–) anywhere — this is the single fastest tell that \
-text isn't his.
+text isn't his. NEVER use a colon (:) either, including to introduce a clause, a list, or an \
+explanation — use a period or a spaced hyphen instead. Colons read as a drafting-tool tic, not \
+how he actually writes.
 2. Vary sentence length aggressively: long accumulating sentences that keep stacking with \
 "and"/"but"/" - ", then a short flat sentence for contrast. Never produce uniform mid-length \
 sentences — that's the most common tell of generated prose. (In a format too short for this \
