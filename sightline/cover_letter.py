@@ -19,6 +19,52 @@ from sightline.assembly import CONTACT, NAME
 
 MODEL = "claude-sonnet-5"
 
+# Derived from analysis of the candidate's own unedited writing (VOICE_PROFILE.md, provided
+# 2026-08-05). Condensed rules + a verbatim calibration pair, per that document's own
+# instruction: examples are verbatim, not paraphrased — the specific wording is the signal.
+VOICE_RULES = """VOICE RULES — apply these exactly; they come from analysis of the candidate's \
+own unedited writing, not a generic style guide:
+
+1. Use spaced hyphens " - " as connectors, the way a comma, colon, or dash would normally be \
+used. NEVER use an em dash (—) or en dash (–) anywhere — this is the single fastest tell that \
+text isn't his.
+2. Vary sentence length aggressively: long accumulating sentences that keep stacking with \
+"and"/"but"/" - ", then a short flat sentence for contrast. Never produce uniform mid-length \
+sentences — that's the most common tell of generated prose.
+3. At most one dry, understated parenthetical aside in the whole letter — never a joke, a \
+self-deprecating or scope-narrowing one.
+4. Build chronologically within a paragraph: situation, then problem, then action, then result. \
+Never lead a paragraph with its conclusion — let the point emerge from the facts.
+5. Concrete nouns over abstractions — name the actual thing, not its category.
+6. Banned words and phrases: leverage (as a verb), synergy, spearheaded, orchestrated, \
+passionate about, thrilled, delve, tapestry, testament, robust (as filler), holistic, \
+best-in-class, value-add, circle back, moreover, furthermore, in addition, "I am writing to," \
+"I am excited to," "I would be thrilled."
+7. Admit a real limit somewhere if one exists — stated flatly, no apology, no softening.
+8. "We" for team/company work, "I" only for what he personally built.
+9. Never explain the company's own mission back to them.
+10. Never mirror the posting's distinctive or unusual phrasing back at it — generic industry \
+terms are fine, but echoing their specific constructions reads as machine-generated.
+11. Never open with "I am writing to apply" or any conclusion-first construction — start with a \
+fact or a situation.
+12. Motivation, if it appears, reads as interest and curiosity ("I'm curious," "it would be neat \
+to") — never as passion or excitement.
+
+Calibration pair — the wrong register, then the same content in his actual voice:
+
+WRONG (generic — do not produce anything resembling this):
+"I am excited to apply for the Program Operations Manager position at Convergent Research. With \
+over a decade of experience spearheading operational transformations, I am passionate about \
+leveraging my expertise to drive impact in the scientific research space."
+
+RIGHT (his actual voice — this is the register to match):
+"I applied for the Program Operations Manager role and wanted to give you some context on where \
+I'm coming from. Most of my background is building operational systems where none existed - most \
+recently inventory tracking for a CPG client who had no idea where their units were, after a \
+stockout cost them somewhere between $100K and $150K. Before that I spent five years in a \
+university engineering department administering research grants, which is where the interest in \
+this kind of work started.\""""
+
 SYSTEM_PROMPT = """You write a cover letter for a job application, grounded ONLY in the \
 candidate's verified resume bullets given below plus the real details of this posting. Never \
 invent an achievement, number, or outcome that isn't in the verified bullets. If the posting \
@@ -28,24 +74,41 @@ talking around them — don't oversell.
 Target 250-400 words total, one page. Hiring managers spend under 30 seconds on a cover \
 letter — a tight, specific 300 words consistently beats a thorough 700.
 
+Before writing, identify the JD's actual stated responsibility categories (postings are often \
+structured in named sections, e.g. "Business Process Analysis" / "Agent Strategy & Design" / \
+"Adoption Measurement" — use whatever the JD's own structure is). Do not silently skip the \
+category the candidate matches worst, even if it means the letter leans more on what's honestly \
+missing there than on a strong bullet — a letter that ignores the JD's single most-detailed \
+responsibility section reads as not having read the posting, which is worse than admitting a gap.
+
 Write 3-4 tight paragraphs, separated by blank lines:
 1. Opening hook — name the role and one concrete, specific reason it's a fit for THIS posting \
 and THIS company (reference something real from the JD or company signals, not generic \
 enthusiasm — "I'm excited to apply" tells the reader nothing they can't assume).
 2. One to two body paragraphs connecting 2-3 of the verified bullets below directly to what \
-this posting is actually asking for. Don't just restate accomplishments — show what they mean \
-for THIS team: what you'd be able to contribute or unblock given what they're hiring for. If \
-there's a real, material gap, name it plainly in one sentence rather than routing around it \
-— specificity and honesty read as more credible than a resume rehash, and recruiters increasingly \
-say generic, template-shaped letters are what actually gets an application rejected, not the \
-use of an AI drafting tool.
-3. Short close — no restating the whole letter, no "I look forward to hearing from you" filler.
+this posting is actually asking for, covering the JD's actual responsibility categories rather \
+than only the ones with the easiest bullet match. Don't just restate accomplishments — show \
+what they mean for THIS team: what you'd be able to contribute or unblock given what they're \
+hiring for. If there's a real, material gap against a category the JD clearly cares about \
+(including one with no matching bullet at all), name it plainly in one sentence rather than \
+omitting it — specificity and honesty read as more credible than a resume rehash, and recruiters \
+increasingly say generic, template-shaped letters are what actually gets an application \
+rejected, not the use of an AI drafting tool.
+3. Short close — forward-looking (what you'd bring to the team from here), not a recap of the \
+gap you just named and not "I look forward to hearing from you" filler.
 
 No corporate throat-clearing, no restating the resume verbatim, no invented personality or \
-passion claims, no sentence that could be pasted into any other cover letter unchanged. Plain, \
-direct, specific, with natural sentence variation — matching the voice of the verified material \
-itself, not a template's. Return only the letter body paragraphs, no salutation or signature — \
-those are added separately.
+passion claims, no sentence that could be pasted into any other cover letter unchanged. Return \
+only the letter body paragraphs, no salutation or signature — those are added separately.
+
+{voice_rules}
+
+Below are additional real samples of the candidate's own writing, for rhythm and word choice \
+only — do not copy their content or reuse their sentences, these are a different story for a \
+different question:
+
+VOICE REFERENCE (candidate's own writing):
+{voice_reference}
 
 Bullets already selected for this posting's resume — echo this same emphasis:
 {selected_bullets}
@@ -58,9 +121,25 @@ def _format_bullets(bullets: list[dict[str, Any]]) -> str:
     return "\n".join(f"- [{b['ref']}] {b['text']}" for b in bullets) or "(none)"
 
 
+def _voice_reference(answers: list[dict[str, Any]], n: int = 3) -> str:
+    """The bullet library is terse resume fragments — it can't teach voice.
+    The answer library has actual multi-sentence prose the candidate wrote
+    and personally confirmed (the Convergent Research application answers
+    among them). Longest usable entries make the richest style samples."""
+    usable = [a for a in answers if a.get("status") in ("ready", "verified") and len(a.get("text") or "") > 200]
+    usable.sort(key=lambda a: -len(a["text"]))
+    if not usable:
+        return "(none available)"
+    return "\n\n".join(f"[{a['question_type']}]\n{a['text']}" for a in usable[:n])
+
+
 def build_user_content(posting: dict[str, Any], score: dict[str, Any]) -> str:
     company = (posting.get("companies") or {}).get("name", "this company")
-    jd_excerpt = (posting.get("jd_text") or "")[:3000]
+    # 3000 chars was cutting off later JD sections (qualifications, specific
+    # responsibility categories) on longer postings — the new instruction to
+    # work through the JD's own stated responsibility categories only works
+    # if those categories are actually still in view.
+    jd_excerpt = (posting.get("jd_text") or "")[:6000]
     return f"""Posting: {posting.get('title')} at {company}
 
 JD:
@@ -89,16 +168,18 @@ def generate_cover_letter(
     score: dict[str, Any],
     bullets: list[dict[str, Any]],
     selected_bullet_refs: list[str],
+    answers: list[dict[str, Any]] | None = None,
 ) -> tuple[str, float]:
     verified = [b for b in bullets if b.get("status") == "verified"]
     selected = [b for b in verified if b["ref"] in selected_bullet_refs]
     other = [b for b in verified if b["ref"] not in selected_bullet_refs]
     system = SYSTEM_PROMPT.format(
+        voice_rules=VOICE_RULES, voice_reference=_voice_reference(answers or []),
         selected_bullets=_format_bullets(selected), other_bullets=_format_bullets(other),
     )
     user_content = build_user_content(posting, score)
     text, cost = client.chat_call(
-        model=MODEL, system=system, messages=[{"role": "user", "content": user_content}], max_tokens=900,
+        model=MODEL, system=system, messages=[{"role": "user", "content": user_content}], max_tokens=1500,
     )
     return text.strip(), cost
 

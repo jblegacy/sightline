@@ -2,7 +2,13 @@ from unittest.mock import MagicMock
 
 from docx import Document as DocxDocument
 
-from sightline.cover_letter import build_user_content, generate_cover_letter, greeting_for, render_cover_letter_docx
+from sightline.cover_letter import (
+    VOICE_RULES,
+    build_user_content,
+    generate_cover_letter,
+    greeting_for,
+    render_cover_letter_docx,
+)
 
 BULLETS = [
     {"ref": "BL-001", "text": "Built the automation platform.", "status": "verified"},
@@ -43,6 +49,42 @@ def test_generate_cover_letter_only_grounds_in_verified_bullets():
     assert "Built the automation platform." in sent_system
     assert "Scaled revenue from $250K to $12M." in sent_system
     assert "Unverified claim." not in sent_system
+
+
+def test_generate_cover_letter_includes_voice_rules():
+    fake_client = MagicMock()
+    fake_client.chat_call.return_value = ("x", 0.01)
+    generate_cover_letter(fake_client, POSTING, SCORE, BULLETS, ["BL-001"])
+    sent_system = fake_client.chat_call.call_args.kwargs["system"]
+    assert VOICE_RULES in sent_system
+    assert "spearheaded" in sent_system  # banned-word list present
+    assert "em dash" in sent_system
+
+
+def test_generate_cover_letter_includes_voice_reference_from_answers():
+    answers = [
+        {"question_type": "tell_me_about_a_failure", "status": "ready",
+         "text": "I'm using that word generously — " + ("x" * 220)},
+        {"question_type": "salary_expectations", "status": "ready", "text": "short one"},  # too short to use
+        {"question_type": "biggest_system_built", "status": "draft",
+         "text": "y" * 300},  # draft — never used, even though it's long
+    ]
+    fake_client = MagicMock()
+    fake_client.chat_call.return_value = ("x", 0.01)
+    generate_cover_letter(fake_client, POSTING, SCORE, BULLETS, ["BL-001"], answers)
+    sent_system = fake_client.chat_call.call_args.kwargs["system"]
+    assert "I'm using that word generously" in sent_system
+    assert "short one" not in sent_system
+    assert "y" * 300 not in sent_system
+
+
+def test_generate_cover_letter_works_without_answers():
+    fake_client = MagicMock()
+    fake_client.chat_call.return_value = ("x", 0.01)
+    text, cost = generate_cover_letter(fake_client, POSTING, SCORE, BULLETS, ["BL-001"])
+    assert text == "x"
+    sent_system = fake_client.chat_call.call_args.kwargs["system"]
+    assert "(none available)" in sent_system
 
 
 def test_generate_cover_letter_separates_selected_from_other_bullets():
