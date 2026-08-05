@@ -2,7 +2,7 @@ from unittest.mock import MagicMock
 
 from docx import Document as DocxDocument
 
-from sightline.cover_letter import build_user_content, generate_cover_letter, render_cover_letter_docx
+from sightline.cover_letter import build_user_content, generate_cover_letter, greeting_for, render_cover_letter_docx
 
 BULLETS = [
     {"ref": "BL-001", "text": "Built the automation platform.", "status": "verified"},
@@ -68,3 +68,24 @@ def test_render_cover_letter_docx_produces_valid_docx_with_body_text():
     assert "Second paragraph." in full_text
     assert "Convergent Research" in full_text
     assert "Program Operations Manager" in full_text
+    assert "Dear Hiring Team," in full_text  # default greeting
+
+
+def test_render_cover_letter_docx_uses_custom_greeting():
+    docx_bytes = render_cover_letter_docx("Body.", "Acme", "Role", greeting="Dear Kait Picco,")
+    import io
+    doc = DocxDocument(io.BytesIO(docx_bytes))
+    full_text = "\n".join(p.text for p in doc.paragraphs)
+    assert "Dear Kait Picco," in full_text
+    assert "Dear Hiring Team," not in full_text
+
+
+def test_greeting_for_uses_named_contact_when_present():
+    score = {"named_contacts": [{"name": "Kait Picco", "title": "Head of People", "context": "..."}]}
+    assert greeting_for(score) == "Dear Kait Picco,"
+
+
+def test_greeting_for_falls_back_when_no_named_contact():
+    assert greeting_for({}) == "Dear Hiring Team,"
+    assert greeting_for({"named_contacts": []}) == "Dear Hiring Team,"
+    assert greeting_for({"named_contacts": [{"name": ""}]}) == "Dear Hiring Team,"

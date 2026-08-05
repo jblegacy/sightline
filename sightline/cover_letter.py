@@ -25,13 +25,27 @@ invent an achievement, number, or outcome that isn't in the verified bullets. If
 has real gaps against the candidate's background, acknowledge them honestly rather than \
 talking around them — don't oversell.
 
-Write 3-4 tight paragraphs, separated by blank lines: an opening that names the role and one \
-concrete, specific reason it's a fit (not generic enthusiasm), a middle section connecting 2-3 \
-of the verified bullets below directly to what this posting is actually asking for, and a short \
-close. No corporate throat-clearing ("I am excited to apply..."), no restating the resume \
-verbatim, no invented personality or passion claims. Plain, direct, specific — matching the \
-voice of the verified material itself. Return only the letter body paragraphs, no salutation \
-or signature — those are added separately.
+Target 250-400 words total, one page. Hiring managers spend under 30 seconds on a cover \
+letter — a tight, specific 300 words consistently beats a thorough 700.
+
+Write 3-4 tight paragraphs, separated by blank lines:
+1. Opening hook — name the role and one concrete, specific reason it's a fit for THIS posting \
+and THIS company (reference something real from the JD or company signals, not generic \
+enthusiasm — "I'm excited to apply" tells the reader nothing they can't assume).
+2. One to two body paragraphs connecting 2-3 of the verified bullets below directly to what \
+this posting is actually asking for. Don't just restate accomplishments — show what they mean \
+for THIS team: what you'd be able to contribute or unblock given what they're hiring for. If \
+there's a real, material gap, name it plainly in one sentence rather than routing around it \
+— specificity and honesty read as more credible than a resume rehash, and recruiters increasingly \
+say generic, template-shaped letters are what actually gets an application rejected, not the \
+use of an AI drafting tool.
+3. Short close — no restating the whole letter, no "I look forward to hearing from you" filler.
+
+No corporate throat-clearing, no restating the resume verbatim, no invented personality or \
+passion claims, no sentence that could be pasted into any other cover letter unchanged. Plain, \
+direct, specific, with natural sentence variation — matching the voice of the verified material \
+itself, not a template's. Return only the letter body paragraphs, no salutation or signature — \
+those are added separately.
 
 Bullets already selected for this posting's resume — echo this same emphasis:
 {selected_bullets}
@@ -58,6 +72,17 @@ Gaps to prepare for: {', '.join(score.get('unmet_requirements') or [])}
 Company signals: {', '.join(score.get('company_signals') or [])}"""
 
 
+def greeting_for(score: dict[str, Any]) -> str:
+    """Use a real named contact the scorer already extracted from the JD,
+    rather than a generic "Dear Hiring Team" — personalizing the greeting
+    is consistently named as a best practice, and Sightline already has
+    this data most of the time without needing any new lookup."""
+    contacts = score.get("named_contacts") or []
+    if contacts and contacts[0].get("name"):
+        return f"Dear {contacts[0]['name']},"
+    return "Dear Hiring Team,"
+
+
 def generate_cover_letter(
     client: AnthropicClient,
     posting: dict[str, Any],
@@ -78,11 +103,12 @@ def generate_cover_letter(
     return text.strip(), cost
 
 
-def render_cover_letter_docx(text: str, company: str, title: str) -> bytes:
+def render_cover_letter_docx(text: str, company: str, title: str, greeting: str = "Dear Hiring Team,") -> bytes:
     doc = Document()
     style = doc.styles["Normal"]
     style.font.name = "Calibri"
     style.font.size = Pt(11)
+    style.paragraph_format.line_spacing = 1.15
     for s in doc.sections:
         s.left_margin = s.right_margin = s.top_margin = s.bottom_margin = Inches(1.0)
 
@@ -93,11 +119,11 @@ def render_cover_letter_docx(text: str, company: str, title: str) -> bytes:
         r.font.size = Pt(size)
         r.bold = bold
 
-    para(NAME, size=13, bold=True, after=1)
+    para(NAME, size=14, bold=True, after=1)
     para(CONTACT, size=9.5, after=16)
     para(datetime.now(timezone.utc).strftime("%B %d, %Y"), size=10.5, after=16)
     para(f"Re: {title} at {company}", size=10.5, bold=True, after=12)
-    para("Dear Hiring Team,", size=11, after=10)
+    para(greeting, size=11, after=10)
 
     for block in text.split("\n\n"):
         block = block.strip()

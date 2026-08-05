@@ -20,7 +20,7 @@ from sightline.anthropic_client import AnthropicClient
 from sightline.assembly import assemble, variant_detail
 from sightline.budget import used_today
 from sightline.config import Settings, get_settings
-from sightline.cover_letter import generate_cover_letter, render_cover_letter_docx
+from sightline.cover_letter import generate_cover_letter, greeting_for, render_cover_letter_docx
 from sightline.dashboard import postings_to_dashboard_p, search_profiles_to_dashboard, settings_to_cfg_qv
 from sightline.db import SightlineDB
 from sightline.ingest import handle_webhook_event
@@ -242,7 +242,7 @@ def api_cover_letter(
     )
 
     company = (posting.get("companies") or {}).get("name", "Unknown")
-    docx_bytes = render_cover_letter_docx(text, company, posting["title"])
+    docx_bytes = render_cover_letter_docx(text, company, posting["title"], greeting_for(score))
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     path = f"{posting_id}/cover-letter-{variant_row['kind']}-{timestamp}.docx"
     db.upload_document("resumes", path, docx_bytes)
