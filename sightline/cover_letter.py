@@ -52,10 +52,20 @@ rejected, not the use of an AI drafting tool.
 gap you just named and not "I look forward to hearing from you" filler.
 
 No corporate throat-clearing, no restating the resume verbatim, no invented personality or \
-passion claims, no sentence that could be pasted into any other cover letter unchanged. Plain, \
-direct, specific, with natural sentence variation — matching the voice of the verified material \
-itself, not a template's. Return only the letter body paragraphs, no salutation or signature — \
-those are added separately.
+passion claims, no sentence that could be pasted into any other cover letter unchanged. Return \
+only the letter body paragraphs, no salutation or signature — those are added separately.
+
+Below are real samples of the candidate's own writing, in their own voice — not resume bullets, \
+actual prose they wrote and stand behind. Match THIS voice: sentence rhythm, how they open a \
+paragraph, plain word choices over inflated ones, the way they undercut their own claims with a \
+concrete detail instead of an adjective ("I'm using that word generously" rather than "very \
+minimal"), dry rather than enthusiastic. Do not copy their content or reuse their sentences — \
+these are a different story for a different question. Match the voice, not the words. If the \
+letter you'd otherwise write sounds more polished or more eager than these samples, it's wrong — \
+rewrite toward the flatter, more specific register shown here.
+
+VOICE REFERENCE (candidate's own writing):
+{voice_reference}
 
 Bullets already selected for this posting's resume — echo this same emphasis:
 {selected_bullets}
@@ -66,6 +76,18 @@ Rest of the verified bullet library, for supporting reference only:
 
 def _format_bullets(bullets: list[dict[str, Any]]) -> str:
     return "\n".join(f"- [{b['ref']}] {b['text']}" for b in bullets) or "(none)"
+
+
+def _voice_reference(answers: list[dict[str, Any]], n: int = 3) -> str:
+    """The bullet library is terse resume fragments — it can't teach voice.
+    The answer library has actual multi-sentence prose the candidate wrote
+    and personally confirmed (the Convergent Research application answers
+    among them). Longest usable entries make the richest style samples."""
+    usable = [a for a in answers if a.get("status") in ("ready", "verified") and len(a.get("text") or "") > 200]
+    usable.sort(key=lambda a: -len(a["text"]))
+    if not usable:
+        return "(none available)"
+    return "\n\n".join(f"[{a['question_type']}]\n{a['text']}" for a in usable[:n])
 
 
 def build_user_content(posting: dict[str, Any], score: dict[str, Any]) -> str:
@@ -103,11 +125,13 @@ def generate_cover_letter(
     score: dict[str, Any],
     bullets: list[dict[str, Any]],
     selected_bullet_refs: list[str],
+    answers: list[dict[str, Any]] | None = None,
 ) -> tuple[str, float]:
     verified = [b for b in bullets if b.get("status") == "verified"]
     selected = [b for b in verified if b["ref"] in selected_bullet_refs]
     other = [b for b in verified if b["ref"] not in selected_bullet_refs]
     system = SYSTEM_PROMPT.format(
+        voice_reference=_voice_reference(answers or []),
         selected_bullets=_format_bullets(selected), other_bullets=_format_bullets(other),
     )
     user_content = build_user_content(posting, score)

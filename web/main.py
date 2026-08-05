@@ -237,8 +237,9 @@ def api_cover_letter(
     score = scores[0]
 
     bullets = db.get_bullets_full()
+    answers = db.get_answers()
     text, cost_usd = generate_cover_letter(
-        anthropic, posting, score, bullets, variant_row.get("bullet_refs") or []
+        anthropic, posting, score, bullets, variant_row.get("bullet_refs") or [], answers
     )
 
     company = (posting.get("companies") or {}).get("name", "Unknown")
