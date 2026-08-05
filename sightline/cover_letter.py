@@ -22,48 +22,38 @@ MODEL = "claude-sonnet-5"
 
 SYSTEM_PROMPT = """You write a cover letter for a job application, grounded ONLY in the \
 candidate's verified resume bullets given below plus the real details of this posting. Never \
-invent an achievement, number, or outcome that isn't in the verified bullets. If the posting \
-has real gaps against the candidate's background, acknowledge them honestly rather than \
-talking around them — don't oversell.
+invent an achievement, number, or outcome that isn't in the verified bullets.
 
-Target 250-400 words total, one page. Hiring managers spend under 30 seconds on a cover \
-letter — a tight, specific 300 words consistently beats a thorough 700.
+Recruiters scan hundreds of these. Target 150-220 words total, including the bullet list below \
+— a 30,000-foot pitch, not a case file. Every sentence you'd cut from a first draft, cut.
 
 Confident, not cocky. State what you did and let it speak for itself — never tell the reader \
 what the role "actually" is, what they're "actually" asking for beneath the posting's own words, \
 or frame yourself as seeing something about the job that they don't. Never compare yourself to \
 other candidates ("further than most candidates," "unlike other applicants") — you have no idea \
-who else applied, and the claim reads as arrogant rather than as evidence. Describe the posting's \
-ask in its own terms, then show the matching fact — don't editorialize about how well it maps or \
-how rare your background is.
+who else applied, and the claim reads as arrogant rather than as evidence.
 
-Before writing, identify the JD's actual stated responsibility categories (postings are often \
-structured in named sections, e.g. "Business Process Analysis" / "Agent Strategy & Design" / \
-"Adoption Measurement" — use whatever the JD's own structure is). Do not silently skip the \
-category the candidate matches worst, even if it means the letter leans more on what's honestly \
-missing there than on a strong bullet — a letter that ignores the JD's single most-detailed \
-responsibility section reads as not having read the posting, which is worse than admitting a gap.
-
-Write 3-4 tight paragraphs, separated by blank lines:
-1. Opening hook — name the role and one concrete, specific reason it's a fit for THIS posting \
-and THIS company (reference something real from the JD or company signals, not generic \
-enthusiasm — "I'm excited to apply" tells the reader nothing they can't assume).
-2. One to two body paragraphs connecting 2-3 of the verified bullets below directly to what \
-this posting asks for, covering the JD's own responsibility categories rather than only the \
-ones with the easiest bullet match. Don't just restate accomplishments — show what they mean \
-for this team, what it would let them stop worrying about. If there's a real, material gap \
-against something the JD clearly cares about (including a category with no matching bullet at \
-all), fold it into the same paragraph as a brief, factual aside next to the closest transferable \
-skill — one clause, not its own paragraph, and not prefaced by any version of "I'll be honest," \
-"to be straight with you," or "I don't want to overstate this." Those preambles are what turn a \
-fact into a confession. State the gap once, plainly, then move straight to what does transfer — \
-never spend more of the letter on the gap than on what's actually being offered.
-3. Short close — forward-looking (what you'd bring to the team from here), not a recap of the \
-gap you just named and not "I look forward to hearing from you" filler.
+Structure, in this order:
+1. Opening — ONE sentence. Name the role and the single clearest reason it's a fit. No "I'm \
+writing to apply," no "I'm confident I'm the ideal candidate" — start from a fact, not a \
+conclusion about yourself.
+2. Context — ONE, at most two, sentences setting up the achievements below (what you do day to \
+day, in plain terms).
+3. A bullet list of 2-4 concrete, quantified wins, each one a close paraphrase or near-verbatim \
+excerpt of one of the verified bullets below — never a new number, outcome, or claim. Pick \
+whichever bullets best match the JD's most central, most-detailed ask; you don't need to touch \
+every responsibility category it lists. Each bullet line starts with "- " and is one line, no \
+sub-clauses.
+4. Close — ONE sentence, forward-looking. Only mention a gap here, and only if something the \
+posting states as a hard requirement (not "preferred") is completely unaddressed by any bullet \
+— one clause, no confession preamble ("I'll be honest," "to be straight with you"). If nothing \
+rises to that bar, skip gaps entirely; this isn't the place to audit yourself.
 
 No corporate throat-clearing, no restating the resume verbatim, no invented personality or \
 passion claims, no sentence that could be pasted into any other cover letter unchanged. Return \
-only the letter body paragraphs, no salutation or signature — those are added separately.
+only the letter body — opening, context, bullet list, close — no salutation or signature, those \
+are added separately. Separate the opening+context block, the bullet list, and the close with \
+blank lines.
 
 {voice_rules}
 
@@ -165,7 +155,17 @@ def render_cover_letter_docx(text: str, company: str, title: str, greeting: str 
 
     for block in text.split("\n\n"):
         block = block.strip()
-        if block:
+        if not block:
+            continue
+        lines = [ln.strip() for ln in block.split("\n") if ln.strip()]
+        if lines and all(ln.startswith("- ") for ln in lines):
+            for ln in lines:
+                p = doc.add_paragraph(ln[2:].strip(), style="List Bullet")
+                p.paragraph_format.space_after = Pt(4)
+                for r in p.runs:
+                    r.font.size = Pt(11)
+            doc.paragraphs[-1].paragraph_format.space_after = Pt(10)
+        else:
             para(block, size=11, after=10)
 
     para("Sincerely,", size=11, after=2)
