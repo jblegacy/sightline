@@ -16,6 +16,7 @@ from typing import Any
 from sightline.anthropic_client import AnthropicClient
 from sightline.db import SightlineDB
 from sightline.provenance import Bullet, ProvenanceError, assert_shippable
+from sightline.voice import VOICE_RULES, voice_reference
 
 DRAFT_MODEL = "claude-sonnet-5"
 
@@ -35,7 +36,17 @@ anything that reads like a bulk send.
 6. Plain text only — no HTML, no tracking language, no attachment mentioned.
 7. Write three variants: a LinkedIn connection note (well under {note_max_chars} characters — \
 LinkedIn's own cap), a longer LinkedIn message (around {message_max_words} words), and an email \
-body (around {email_max_words} words) with its own subject line. Sign as "James"."""
+body (around {email_max_words} words) with its own subject line. Sign as "James".
+
+{voice_rules}
+
+The note and subject line are too short for the sentence-rhythm rule above to apply — for those \
+two, prioritize the banned-word list, concrete nouns, and no conclusion-first opener. The message \
+and email body have room for the fuller rhythm.
+
+Real samples of the candidate's own writing, for word choice and tone only — do not copy their \
+content, these are a different context entirely:
+{voice_reference}"""
 
 DRAFT_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -81,6 +92,7 @@ def generate_drafts(
     target_title: str | None,
     metric_bullet: dict[str, Any],
     limits: dict[str, int],
+    answers: list[dict[str, Any]] | None = None,
 ) -> tuple[dict[str, str], float]:
     company = (posting.get("companies") or {}).get("name", "this company")
     signals = score.get("company_signals") or []
@@ -90,11 +102,13 @@ def generate_drafts(
         note_max_chars=limits.get("linkedin_note_max_chars", 300),
         message_max_words=limits.get("linkedin_message_max_words", 150),
         email_max_words=limits.get("email_max_words", 80),
+        voice_rules=VOICE_RULES, voice_reference=voice_reference(answers or []),
     )
     user_content = f"""Target: {target_name}, {target_title or 'title unknown'}
 Posting: {posting.get('title')} at {company}
 Company signal to open with: {signal}
-Metric to reference (use this claim, not a different one): {metric_bullet['text']}
+Metric to reference — this is the candidate's own achievement, at a previous employer, not \
+something the target or their company did (use this claim, not a different one): {metric_bullet['text']}
 Reports to (if relevant to mention): {score.get('reports_to') or 'not stated'}"""
     result, cost_usd = client.structured_call(
         model=DRAFT_MODEL,
@@ -103,7 +117,7 @@ Reports to (if relevant to mention): {score.get('reports_to') or 'not stated'}""
         tool_name="submit_drafts",
         tool_description="Submit the three outreach draft variants.",
         input_schema=DRAFT_SCHEMA,
-        max_tokens=800,
+        max_tokens=1200,
     )
     return result, cost_usd
 
@@ -157,8 +171,9 @@ def assemble_outreach(
         "email_max_words": settings.get("email_max_words", 80),
         "email_subject_max_words": settings.get("email_subject_max_words", 10),
     }
+    answers = db.get_answers()
     drafts, cost_usd = generate_drafts(
-        anthropic, posting, score, target_name, target_title, metric_bullet, limits
+        anthropic, posting, score, target_name, target_title, metric_bullet, limits, answers
     )
 
     row = db.upsert_outreach({
