@@ -124,7 +124,12 @@ def generate_cover_letter(
     text, cost = client.chat_call(
         model=MODEL, system=system, messages=[{"role": "user", "content": user_content}], max_tokens=1500,
     )
-    return text.strip(), cost
+    text = text.strip()
+    # Found live: a truncated/empty response was silently saved as the
+    # cover letter and uploaded to storage — never let that happen quietly.
+    if len(text) < 50:
+        raise ValueError(f"cover letter generation returned no usable text ({len(text)} chars)")
+    return text, cost
 
 
 def render_cover_letter_docx(text: str, company: str, title: str, greeting: str = "Dear Hiring Team,") -> bytes:

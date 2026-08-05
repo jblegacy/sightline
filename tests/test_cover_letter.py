@@ -30,6 +30,20 @@ SCORE = {
 }
 
 
+def test_generate_cover_letter_raises_on_empty_response():
+    # Found live: extended thinking consumed the whole token budget and the
+    # model returned empty text with stop_reason=max_tokens — that was
+    # silently saved as the cover letter and uploaded to storage. Must raise
+    # instead of returning garbage.
+    fake_client = MagicMock()
+    fake_client.chat_call.return_value = ("", 0.02)
+    try:
+        generate_cover_letter(fake_client, POSTING, SCORE, BULLETS, ["BL-001"])
+        assert False, "expected ValueError"
+    except ValueError as e:
+        assert "no usable text" in str(e)
+
+
 def test_build_user_content_includes_jd_and_score_context():
     content = build_user_content(POSTING, SCORE)
     assert "Program Operations Manager" in content
@@ -40,10 +54,12 @@ def test_build_user_content_includes_jd_and_score_context():
 
 def test_generate_cover_letter_only_grounds_in_verified_bullets():
     fake_client = MagicMock()
-    fake_client.chat_call.return_value = ("Paragraph one.\n\nParagraph two.", 0.015)
+    fake_client.chat_call.return_value = (
+        "Paragraph one, with enough real content to clear the length floor.\n\nParagraph two.", 0.015,
+    )
     text, cost = generate_cover_letter(fake_client, POSTING, SCORE, BULLETS, ["BL-001"])
 
-    assert text == "Paragraph one.\n\nParagraph two."
+    assert text == "Paragraph one, with enough real content to clear the length floor.\n\nParagraph two."
     assert cost == 0.015
     sent_system = fake_client.chat_call.call_args.kwargs["system"]
     assert "Built the automation platform." in sent_system
@@ -53,7 +69,7 @@ def test_generate_cover_letter_only_grounds_in_verified_bullets():
 
 def test_generate_cover_letter_includes_voice_rules():
     fake_client = MagicMock()
-    fake_client.chat_call.return_value = ("x", 0.01)
+    fake_client.chat_call.return_value = ("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", 0.01)
     generate_cover_letter(fake_client, POSTING, SCORE, BULLETS, ["BL-001"])
     sent_system = fake_client.chat_call.call_args.kwargs["system"]
     assert VOICE_RULES in sent_system
@@ -70,7 +86,7 @@ def test_generate_cover_letter_includes_voice_reference_from_answers():
          "text": "y" * 300},  # draft — never used, even though it's long
     ]
     fake_client = MagicMock()
-    fake_client.chat_call.return_value = ("x", 0.01)
+    fake_client.chat_call.return_value = ("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", 0.01)
     generate_cover_letter(fake_client, POSTING, SCORE, BULLETS, ["BL-001"], answers)
     sent_system = fake_client.chat_call.call_args.kwargs["system"]
     assert "I'm using that word generously" in sent_system
@@ -80,16 +96,16 @@ def test_generate_cover_letter_includes_voice_reference_from_answers():
 
 def test_generate_cover_letter_works_without_answers():
     fake_client = MagicMock()
-    fake_client.chat_call.return_value = ("x", 0.01)
+    fake_client.chat_call.return_value = ("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", 0.01)
     text, cost = generate_cover_letter(fake_client, POSTING, SCORE, BULLETS, ["BL-001"])
-    assert text == "x"
+    assert text == "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
     sent_system = fake_client.chat_call.call_args.kwargs["system"]
     assert "(none available)" in sent_system
 
 
 def test_generate_cover_letter_separates_selected_from_other_bullets():
     fake_client = MagicMock()
-    fake_client.chat_call.return_value = ("x", 0.01)
+    fake_client.chat_call.return_value = ("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", 0.01)
     generate_cover_letter(fake_client, POSTING, SCORE, BULLETS, ["BL-001"])
     sent_system = fake_client.chat_call.call_args.kwargs["system"]
     # BL-001 (selected) should appear before the "rest of the library" section

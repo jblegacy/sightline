@@ -268,7 +268,7 @@ class FakeAnthropic:
         }
 
     def chat_call(self, **kwargs):
-        return "Here's a draft answer grounded in your bullets.", 0.008
+        return "Here's a draft answer grounded in your verified bullets.", 0.008
 
     def structured_call(self, **kwargs):
         if kwargs.get("tool_name") == "submit_brief":

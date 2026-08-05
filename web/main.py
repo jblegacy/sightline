@@ -238,9 +238,12 @@ def api_cover_letter(
 
     bullets = db.get_bullets_full()
     answers = db.get_answers()
-    text, cost_usd = generate_cover_letter(
-        anthropic, posting, score, bullets, variant_row.get("bullet_refs") or [], answers
-    )
+    try:
+        text, cost_usd = generate_cover_letter(
+            anthropic, posting, score, bullets, variant_row.get("bullet_refs") or [], answers
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
 
     company = (posting.get("companies") or {}).get("name", "Unknown")
     docx_bytes = render_cover_letter_docx(text, company, posting["title"], greeting_for(score))

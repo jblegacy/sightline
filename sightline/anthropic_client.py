@@ -61,6 +61,12 @@ class AnthropicClient:
                     }
                 ],
                 "tool_choice": {"type": "tool", "name": tool_name},
+                # Extended thinking is on by default for this model and counts
+                # against max_tokens — found live: a longer system prompt made
+                # a chat_call spend its entire budget on invisible reasoning
+                # and return empty text, stop_reason=max_tokens. We never
+                # want the reasoning trace, only the final output.
+                "thinking": {"type": "disabled"},
             },
         )
         resp.raise_for_status()
@@ -83,7 +89,10 @@ class AnthropicClient:
         not a single structured extraction."""
         resp = self._client.post(
             "/messages",
-            json={"model": model, "max_tokens": max_tokens, "system": system, "messages": messages},
+            json={
+                "model": model, "max_tokens": max_tokens, "system": system, "messages": messages,
+                "thinking": {"type": "disabled"},
+            },
         )
         resp.raise_for_status()
         data = resp.json()
