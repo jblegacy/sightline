@@ -557,7 +557,9 @@ function rowHTML(p){
             <button class="btn ghost" data-act="reject">Reject</button>
             <button class="btn ghost" data-act="override-score">${p.scoreOverride?'Change score override':'Override score'}</button>
             ${p.scoreOverride?'<button class="btn ghost" data-act="clear-override">Clear override</button>':''}`:
-            `<span class="pill submitted">approved</span>`}
+            p.stage==='approved'?`<span class="pill submitted">approved</span>
+            <button class="btn ghost" data-act="back-to-queue">Back to queue — not right now</button>`:
+            `<span class="pill submitted">${esc(p.stage)}</span>`}
           </div>
         </section>
       </div>
@@ -805,6 +807,10 @@ document.addEventListener('click',e=>{
     if(act==='clear-override'){
       patchScoreOverride(p.id,{clear:true})
         .then(ok=>{if(ok){toast('Override cleared — back to the AI score');reloadPostings()}});
+      return}
+    if(act==='back-to-queue'){
+      patchApplication(p.id,{status:'queued'})
+        .then(ok=>{if(ok){toast('Moved back to queue — the built resume is still there if you come back to it');reloadPostings()}});
       return}
     return}
 

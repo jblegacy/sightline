@@ -52,6 +52,8 @@ def _stage_from_app(app: dict[str, Any] | None, score: int, score_threshold: int
     if app is None:
         return "queue" if score >= score_threshold else "watch"
     status = app["status"]
+    if status == "queued":
+        return "queue"  # explicit "not now" — reverses Approve, keeps any built variant
     if status == "deferred":
         return "watch"
     if status == "rejected" and not app["sent"]:

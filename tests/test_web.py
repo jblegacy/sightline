@@ -459,6 +459,22 @@ def test_api_application_patch_reject_logs_reason_and_hides_posting(client, fake
     assert reject_events and reject_events[0]["payload"]["reason"] == "wrong seniority"
 
 
+def test_api_application_patch_back_to_queue_after_approve(client, fake_db):
+    posting_id = _seed_scored_posting(client)
+    client.post(f"/api/postings/{posting_id}/assemble", json={}, auth=(DASH_USER, DASH_PASS))
+    approved = client.get("/api/postings", auth=(DASH_USER, DASH_PASS)).json()[0]
+    assert approved["stage"] == "approved"
+
+    resp = client.patch(
+        f"/api/postings/{posting_id}/application", json={"status": "queued"},
+        auth=(DASH_USER, DASH_PASS),
+    )
+    assert resp.status_code == 200
+    p = client.get("/api/postings", auth=(DASH_USER, DASH_PASS)).json()[0]
+    assert p["stage"] == "queue"
+    assert p["app"]["file"]  # the built variant is still there, not discarded
+
+
 def test_api_application_patch_mark_submitted_moves_to_applied(client, fake_db):
     posting_id = _seed_scored_posting(client)
     resp = client.patch(
