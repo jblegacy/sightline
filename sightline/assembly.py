@@ -542,8 +542,12 @@ def variant_detail(db: SightlineDB, posting_id: int) -> dict[str, Any]:
     bullets = db.get_bullets_full()
     sections = select_bullets(bullets, variant_row["kind"], score.get("keywords") or [])
     signed_url = db.create_signed_url(STORAGE_BUCKET, variant_row["storage_path"])
+    cover_letter_signed_url = None
+    if variant_row.get("cover_letter_storage_path"):
+        cover_letter_signed_url = db.create_signed_url(STORAGE_BUCKET, variant_row["cover_letter_storage_path"])
     return {
         **variant_row, "signed_url": signed_url, "sections": _serialize_sections(sections),
         "jd_text": posting.get("jd_text"), "jd_keywords": score.get("keywords") or [],
         "rationale": score.get("rationale") or "",
+        "cover_letter_signed_url": cover_letter_signed_url,
     }

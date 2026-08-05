@@ -354,6 +354,51 @@ def test_api_variant_detail_restores_sections_and_fresh_signed_url(client, fake_
     assert body["signed_url"].startswith("https://")
 
 
+# ---- cover letter ----
+
+
+def test_api_cover_letter_requires_auth(client):
+    resp = client.post("/api/postings/1/cover-letter", json={})
+    assert resp.status_code == 401
+
+
+def test_api_cover_letter_requires_a_built_resume_first(client):
+    posting_id = _seed_scored_posting(client)
+    resp = client.post(f"/api/postings/{posting_id}/cover-letter", json={}, auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 400
+
+
+def test_api_cover_letter_happy_path(client, fake_db):
+    posting_id = _seed_scored_posting(client)
+    client.post(f"/api/postings/{posting_id}/assemble", json={}, auth=(DASH_USER, DASH_PASS))
+
+    resp = client.post(f"/api/postings/{posting_id}/cover-letter", json={}, auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["cover_letter_text"]
+    assert body["signed_url"].startswith("https://")
+    assert any(e["event"] == "cover_letter_generated" for e in fake_db.events)
+
+    # stored on the variant, and comes back through /api/postings too
+    posting = client.get("/api/postings", auth=(DASH_USER, DASH_PASS)).json()[0]
+    assert posting["id"] == posting_id
+
+
+def test_api_cover_letter_unknown_posting_404s(client):
+    resp = client.post("/api/postings/999999/cover-letter", json={}, auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 404
+
+
+def test_api_variant_detail_includes_cover_letter_signed_url_once_generated(client, fake_db):
+    posting_id = _seed_scored_posting(client)
+    client.post(f"/api/postings/{posting_id}/assemble", json={}, auth=(DASH_USER, DASH_PASS))
+    client.post(f"/api/postings/{posting_id}/cover-letter", json={}, auth=(DASH_USER, DASH_PASS))
+
+    resp = client.get(f"/api/postings/{posting_id}/variant", auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 200
+    assert resp.json()["cover_letter_signed_url"].startswith("https://")
+
+
 # ---- outreach ----
 
 

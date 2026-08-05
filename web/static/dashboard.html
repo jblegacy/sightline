@@ -620,7 +620,8 @@ function drawApps(){
         <td>${ap.file?`<a href="#" class="mono" data-dl="${p.id}" style="font-size:11.5px">${esc(ap.file)}</a>
              ${ap.finalFile?`<br><span class="cc">sent: ${esc(ap.finalFile)}</span>`:(ap.sent?'<br><span class="cc" style="color:var(--gate)">final not recorded</span>':'')}
              <br><button class="btn sm ghost" data-diff="${p.id}" style="margin-top:4px">View changes</button>
-             ${ap.sent&&!ap.finalFile?`<button class="btn sm ghost" data-final="${p.id}" style="margin-top:4px">Record final</button>`:''}`:'<span class="cc">building\u2026</span>'}</td>
+             ${ap.sent&&!ap.finalFile?`<button class="btn sm ghost" data-final="${p.id}" style="margin-top:4px">Record final</button>`:''}
+             <br>${ap.coverLetterFile?`<a href="#" class="mono" data-dlcl="${p.id}" style="font-size:11.5px">${esc(ap.coverLetterFile)}</a>`:`<button class="btn sm ghost" data-covergen="${p.id}" style="margin-top:4px">Generate cover letter</button>`}`:'<span class="cc">building\u2026</span>'}</td>
         <td><span class="pill ${pillCls}">${esc(st)}</span><br>
             <select data-st="${p.id}" style="margin-top:5px">${STATUSES.map(x=>`<option ${x===st?'selected':''}>${x}</option>`).join('')}</select></td>
         <td class="mono" style="font-size:11.5px">${esc(ap.sent||'\u2014')}</td>
@@ -841,6 +842,33 @@ document.addEventListener('click',e=>{
       const v=p&&await ensureVariantLoaded(p);
       if(v&&v.signed_url){window.open(v.signed_url,'_blank')}
       else{toast('No file to download')}
+    })();
+    return}
+
+  const dlcl=e.target.dataset.dlcl;
+  if(dlcl){
+    e.preventDefault();
+    (async()=>{
+      const p=P.find(x=>x.id==dlcl);
+      const v=p&&await ensureVariantLoaded(p);
+      if(v&&v.cover_letter_signed_url){window.open(v.cover_letter_signed_url,'_blank')}
+      else{toast('No cover letter to download')}
+    })();
+    return}
+
+  const cg=e.target.dataset.covergen;
+  if(cg){
+    e.target.disabled=true; e.target.textContent='Generating…';
+    (async()=>{
+      try{
+        const resp=await fetch(`/api/postings/${cg}/cover-letter`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+        if(!resp.ok){const err=await resp.json().catch(()=>({detail:'generation failed'}));
+          toast(resp.status===400?err.detail:`Failed: ${err.detail||resp.status}`);
+          e.target.disabled=false;e.target.textContent='Generate cover letter';return}
+        toast('Cover letter ready');
+        await reloadPostings();
+      }catch(err){toast('Cover letter generation failed — see console');console.error('cover letter failed:',err);
+        e.target.disabled=false;e.target.textContent='Generate cover letter';}
     })();
     return}
 

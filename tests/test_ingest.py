@@ -156,6 +156,13 @@ class FakeDB:
         self.variants.append(row)
         return row
 
+    def update_variant(self, variant_id: int, fields: dict[str, Any]) -> dict[str, Any]:
+        for v in self.variants:
+            if v["id"] == variant_id:
+                v.update(fields)
+                return v
+        raise LookupError(f"variant {variant_id} not found")
+
     def upsert_outreach(self, fields: dict[str, Any]) -> dict[str, Any]:
         existing = next(
             (o for o in self.outreach if o.get("posting_id") == fields.get("posting_id")), None

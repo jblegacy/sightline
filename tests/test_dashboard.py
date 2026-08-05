@@ -108,6 +108,16 @@ def test_postings_to_dashboard_p_override_moves_posting_into_queue():
     assert result[0]["stage"] == "queue"
 
 
+def test_posting_row_to_p_surfaces_cover_letter_file():
+    variant = {
+        "posting_id": 10, "kind": "leadership", "storage_path": "10/leadership-x.docx",
+        "cover_letter_storage_path": "10/cover-letter-leadership-x.docx", "brief": "",
+    }
+    row = {**SAMPLE_ROW, "variants": [variant]}
+    p = posting_row_to_p(row, co_count=1)
+    assert p["app"]["coverLetterFile"] == "10/cover-letter-leadership-x.docx".split("/")[-1]
+
+
 def test_postings_to_dashboard_p_queued_status_reverses_approve_back_to_queue():
     # "Back to queue" on an approved posting — reverses Approve without
     # discarding an already-built variant.

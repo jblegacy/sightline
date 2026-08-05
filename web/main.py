@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import logging
 import secrets
+from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,7 @@ from sightline.anthropic_client import AnthropicClient
 from sightline.assembly import assemble, variant_detail
 from sightline.budget import used_today
 from sightline.config import Settings, get_settings
+from sightline.cover_letter import generate_cover_letter, render_cover_letter_docx
 from sightline.dashboard import postings_to_dashboard_p, search_profiles_to_dashboard, settings_to_cfg_qv
 from sightline.db import SightlineDB
 from sightline.ingest import handle_webhook_event
@@ -207,6 +209,53 @@ def api_variant_detail(posting_id: int, db: SightlineDB = Depends(get_db)) -> di
         return variant_detail(db, posting_id)
     except LookupError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
+
+
+@app.post("/api/postings/{posting_id}/cover-letter", dependencies=[Depends(require_auth)])
+def api_cover_letter(
+    posting_id: int,
+    db: SightlineDB = Depends(get_db),
+    anthropic: AnthropicClient = Depends(get_anthropic),
+) -> dict:
+    """Generates (or regenerates) a cover letter echoing the same bullets
+    already selected for this posting's resume — requires a built variant.
+    Grounded only in verified bullets; see sightline/cover_letter.py."""
+    try:
+        posting = db.get_posting(posting_id)
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+    variants = posting.get("variants") or []
+    if not variants:
+        raise HTTPException(
+            status_code=400, detail="build a resume first — the cover letter echoes its bullet selection"
+        )
+    variant_row = variants[0]
+    scores = posting.get("scores") or []
+    if not scores:
+        raise HTTPException(status_code=404, detail=f"posting {posting_id} has not been scored yet")
+    score = scores[0]
+
+    bullets = db.get_bullets_full()
+    text, cost_usd = generate_cover_letter(
+        anthropic, posting, score, bullets, variant_row.get("bullet_refs") or []
+    )
+
+    company = (posting.get("companies") or {}).get("name", "Unknown")
+    docx_bytes = render_cover_letter_docx(text, company, posting["title"])
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    path = f"{posting_id}/cover-letter-{variant_row['kind']}-{timestamp}.docx"
+    db.upload_document("resumes", path, docx_bytes)
+
+    updated = db.update_variant(variant_row["id"], {
+        "cover_letter_text": text, "cover_letter_storage_path": path,
+    })
+    signed_url = db.create_signed_url("resumes", path)
+    db.log_event(
+        entity_type="variant", entity_id=variant_row["id"], event="cover_letter_generated",
+        payload={"posting_id": posting_id, "cost_usd": round(cost_usd, 5)},
+    )
+    return {**updated, "signed_url": signed_url}
 
 
 @app.post("/api/postings/{posting_id}/outreach", dependencies=[Depends(require_auth)])

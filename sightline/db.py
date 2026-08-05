@@ -196,6 +196,17 @@ class SightlineDB:
         resp.raise_for_status()
         return resp.json()[0]
 
+    def update_variant(self, variant_id: int, fields: dict[str, Any]) -> dict[str, Any]:
+        resp = self._client.patch(
+            "/variants", params={"id": f"eq.{variant_id}"},
+            headers={"Prefer": "return=representation"}, json=fields,
+        )
+        resp.raise_for_status()
+        rows = resp.json()
+        if not rows:
+            raise LookupError(f"variant {variant_id} not found")
+        return rows[0]
+
     def upload_document(self, bucket: str, path: str, content: bytes) -> None:
         """Storage's REST surface lives at /storage/v1, not /rest/v1 — this
         client's base_url is PostgREST's (.../rest/v1), and httpx merges a
