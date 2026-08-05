@@ -108,6 +108,26 @@ def test_postings_to_dashboard_p_override_moves_posting_into_queue():
     assert result[0]["stage"] == "queue"
 
 
+def test_posting_row_to_p_surfaces_cover_letter_file():
+    variant = {
+        "posting_id": 10, "kind": "leadership", "storage_path": "10/leadership-x.docx",
+        "cover_letter_storage_path": "10/cover-letter-leadership-x.docx", "brief": "",
+    }
+    row = {**SAMPLE_ROW, "variants": [variant]}
+    p = posting_row_to_p(row, co_count=1)
+    assert p["app"]["coverLetterFile"] == "10/cover-letter-leadership-x.docx".split("/")[-1]
+
+
+def test_postings_to_dashboard_p_queued_status_reverses_approve_back_to_queue():
+    # "Back to queue" on an approved posting — reverses Approve without
+    # discarding an already-built variant.
+    variant = {"posting_id": 10, "kind": "leadership", "storage_path": "10/leadership-x.docx", "brief": ""}
+    application = {"posting_id": 10, "status": "queued", "submitted_at": None}
+    row = {**SAMPLE_ROW, "variants": [variant], "applications": application}
+    result = postings_to_dashboard_p([row], score_threshold=70)
+    assert result[0]["stage"] == "queue"
+
+
 def test_postings_to_dashboard_p_buckets_queue_vs_watch():
     high = SAMPLE_ROW
     low_score = {**SAMPLE_SCORE, "total": 60, "dimensions": {

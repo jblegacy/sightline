@@ -71,6 +71,28 @@ class AnthropicClient:
         cost = _cost_usd(model, usage["input_tokens"], usage["output_tokens"])
         return tool_use["input"], cost
 
+    def chat_call(
+        self,
+        model: str,
+        system: str,
+        messages: list[dict[str, str]],
+        max_tokens: int = 1500,
+    ) -> tuple[str, float]:
+        """Plain multi-turn conversation, no forced tool use — for the answer
+        workbench, where free-form back-and-forth drafting is the point,
+        not a single structured extraction."""
+        resp = self._client.post(
+            "/messages",
+            json={"model": model, "max_tokens": max_tokens, "system": system, "messages": messages},
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        text = "".join(b["text"] for b in data["content"] if b["type"] == "text")
+        usage = data["usage"]
+        cost = _cost_usd(model, usage["input_tokens"], usage["output_tokens"])
+        return text, cost
+
 
 def _cost_usd(model: str, input_tokens: int, output_tokens: int) -> float:
     rates = PRICING_USD_PER_MTOK.get(model)

@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import logging
 import secrets
+from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -14,10 +15,12 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
+from sightline.answers import chat_reply, next_ref
 from sightline.anthropic_client import AnthropicClient
 from sightline.assembly import assemble, variant_detail
 from sightline.budget import used_today
 from sightline.config import Settings, get_settings
+from sightline.cover_letter import generate_cover_letter, render_cover_letter_docx
 from sightline.dashboard import postings_to_dashboard_p, search_profiles_to_dashboard, settings_to_cfg_qv
 from sightline.db import SightlineDB
 from sightline.ingest import handle_webhook_event
@@ -208,6 +211,53 @@ def api_variant_detail(posting_id: int, db: SightlineDB = Depends(get_db)) -> di
         raise HTTPException(status_code=404, detail=str(e)) from e
 
 
+@app.post("/api/postings/{posting_id}/cover-letter", dependencies=[Depends(require_auth)])
+def api_cover_letter(
+    posting_id: int,
+    db: SightlineDB = Depends(get_db),
+    anthropic: AnthropicClient = Depends(get_anthropic),
+) -> dict:
+    """Generates (or regenerates) a cover letter echoing the same bullets
+    already selected for this posting's resume — requires a built variant.
+    Grounded only in verified bullets; see sightline/cover_letter.py."""
+    try:
+        posting = db.get_posting(posting_id)
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+    variants = posting.get("variants") or []
+    if not variants:
+        raise HTTPException(
+            status_code=400, detail="build a resume first — the cover letter echoes its bullet selection"
+        )
+    variant_row = variants[0]
+    scores = posting.get("scores") or []
+    if not scores:
+        raise HTTPException(status_code=404, detail=f"posting {posting_id} has not been scored yet")
+    score = scores[0]
+
+    bullets = db.get_bullets_full()
+    text, cost_usd = generate_cover_letter(
+        anthropic, posting, score, bullets, variant_row.get("bullet_refs") or []
+    )
+
+    company = (posting.get("companies") or {}).get("name", "Unknown")
+    docx_bytes = render_cover_letter_docx(text, company, posting["title"])
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    path = f"{posting_id}/cover-letter-{variant_row['kind']}-{timestamp}.docx"
+    db.upload_document("resumes", path, docx_bytes)
+
+    updated = db.update_variant(variant_row["id"], {
+        "cover_letter_text": text, "cover_letter_storage_path": path,
+    })
+    signed_url = db.create_signed_url("resumes", path)
+    db.log_event(
+        entity_type="variant", entity_id=variant_row["id"], event="cover_letter_generated",
+        payload={"posting_id": posting_id, "cost_usd": round(cost_usd, 5)},
+    )
+    return {**updated, "signed_url": signed_url}
+
+
 @app.post("/api/postings/{posting_id}/outreach", dependencies=[Depends(require_auth)])
 def api_outreach_generate(
     posting_id: int,
@@ -291,6 +341,61 @@ def api_score_override(
         payload={"posting_id": posting_id, "old_total": score["total"], "new_total": total, "reason": reason},
     )
     return updated
+
+
+@app.get("/api/answers", dependencies=[Depends(require_auth)])
+def api_answers(db: SightlineDB = Depends(get_db)) -> list[dict]:
+    return db.get_answers()
+
+
+@app.post("/api/answers/chat", dependencies=[Depends(require_auth)])
+def api_answers_chat(
+    body: dict[str, Any],
+    db: SightlineDB = Depends(get_db),
+    anthropic: AnthropicClient = Depends(get_anthropic),
+) -> dict:
+    """One turn of the answer workbench chat. Stateless server-side — the
+    caller resends the full message history each turn; nothing about the
+    conversation itself is persisted, only whatever gets explicitly saved
+    via /api/answers/save."""
+    messages = body.get("messages")
+    if not messages:
+        raise HTTPException(status_code=400, detail="messages is required")
+
+    posting = None
+    posting_id = body.get("posting_id")
+    if posting_id:
+        try:
+            posting = db.get_posting(posting_id)
+        except LookupError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+
+    bullets = db.get_bullets_full()
+    answers = db.get_answers()
+    reply, cost_usd = chat_reply(anthropic, bullets, answers, posting, messages)
+    return {"reply": reply, "cost_usd": round(cost_usd, 5)}
+
+
+@app.post("/api/answers/save", dependencies=[Depends(require_auth)])
+def api_answers_save(body: dict[str, Any], db: SightlineDB = Depends(get_db)) -> dict:
+    text = body.get("text")
+    question_type = body.get("question_type")
+    if not text or not question_type:
+        raise HTTPException(status_code=400, detail="text and question_type are both required")
+
+    ref = body.get("ref")
+    if not ref:
+        ref = next_ref(db.get_answers())
+
+    saved = db.upsert_answer({
+        "ref": ref,
+        "question_type": question_type,
+        "text": text,
+        "tags": body.get("tags") or [],
+        "status": body.get("status") or "ready",
+    })
+    db.log_event(entity_type="answer", event="saved", payload={"ref": ref, "question_type": question_type})
+    return saved
 
 
 @app.post("/webhooks/theirstack")

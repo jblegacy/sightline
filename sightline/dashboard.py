@@ -28,6 +28,7 @@ def _variant_to_app(variant: dict[str, Any]) -> dict[str, Any]:
         "variant": _VARIANT_LABEL.get(variant.get("kind"), variant.get("kind")),
         "file": (variant.get("storage_path") or "").split("/")[-1] or None,
         "finalFile": None,
+        "coverLetterFile": (variant.get("cover_letter_storage_path") or "").split("/")[-1] or None,
         "status": "ready to submit",
         "sent": None,
         "due": None,
@@ -41,6 +42,7 @@ def _application_to_app(application: dict[str, Any], variant: dict[str, Any] | N
         "variant": _VARIANT_LABEL.get(variant.get("kind"), variant.get("kind")) if variant else None,
         "file": ((variant.get("storage_path") or "").split("/")[-1] or None) if variant else None,
         "finalFile": application.get("final_filename"),
+        "coverLetterFile": (variant.get("cover_letter_storage_path") or "").split("/")[-1] or None,
         "status": application.get("status") or ("ready to submit" if variant else "deferred"),
         "sent": application.get("submitted_at"),
         "due": application.get("follow_up_due"),
@@ -52,6 +54,8 @@ def _stage_from_app(app: dict[str, Any] | None, score: int, score_threshold: int
     if app is None:
         return "queue" if score >= score_threshold else "watch"
     status = app["status"]
+    if status == "queued":
+        return "queue"  # explicit "not now" — reverses Approve, keeps any built variant
     if status == "deferred":
         return "watch"
     if status == "rejected" and not app["sent"]:

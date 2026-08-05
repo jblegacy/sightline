@@ -12,6 +12,7 @@ class FakeDB:
         self.variants: list[dict[str, Any]] = []
         self.outreach: list[dict[str, Any]] = []
         self.applications: list[dict[str, Any]] = []
+        self.answers: list[dict[str, Any]] = []
         self.uploaded_documents: list[tuple[str, str, bytes]] = []
         self._settings = {
             "red_flag_phrases": red_flag_phrases or [],
@@ -155,6 +156,13 @@ class FakeDB:
         self.variants.append(row)
         return row
 
+    def update_variant(self, variant_id: int, fields: dict[str, Any]) -> dict[str, Any]:
+        for v in self.variants:
+            if v["id"] == variant_id:
+                v.update(fields)
+                return v
+        raise LookupError(f"variant {variant_id} not found")
+
     def upsert_outreach(self, fields: dict[str, Any]) -> dict[str, Any]:
         existing = next(
             (o for o in self.outreach if o.get("posting_id") == fields.get("posting_id")), None
@@ -183,6 +191,18 @@ class FakeDB:
                 s["human_override_at"] = "2026-08-04T12:00:00+00:00" if total is not None else None
                 return s
         raise LookupError(f"score {score_id} not found")
+
+    def get_answers(self) -> list[dict[str, Any]]:
+        return self.answers
+
+    def upsert_answer(self, fields: dict[str, Any]) -> dict[str, Any]:
+        existing = next((a for a in self.answers if a.get("ref") == fields.get("ref")), None)
+        if existing:
+            existing.update(fields)
+            return existing
+        row = {**fields, "id": len(self.answers) + 1}
+        self.answers.append(row)
+        return row
 
     def upsert_application(self, fields: dict[str, Any]) -> dict[str, Any]:
         existing = next(
@@ -246,6 +266,9 @@ class FakeAnthropic:
             "role_fit": 20, "evidence_overlap": 15, "seniority_scope": 12,
             "remote_authenticity": 15, "comp_signal": 10, "company_stage_fit": 8, "red_flags": 0,
         }
+
+    def chat_call(self, **kwargs):
+        return "Here's a draft answer grounded in your bullets.", 0.008
 
     def structured_call(self, **kwargs):
         if kwargs.get("tool_name") == "submit_brief":

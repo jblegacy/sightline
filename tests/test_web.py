@@ -354,6 +354,51 @@ def test_api_variant_detail_restores_sections_and_fresh_signed_url(client, fake_
     assert body["signed_url"].startswith("https://")
 
 
+# ---- cover letter ----
+
+
+def test_api_cover_letter_requires_auth(client):
+    resp = client.post("/api/postings/1/cover-letter", json={})
+    assert resp.status_code == 401
+
+
+def test_api_cover_letter_requires_a_built_resume_first(client):
+    posting_id = _seed_scored_posting(client)
+    resp = client.post(f"/api/postings/{posting_id}/cover-letter", json={}, auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 400
+
+
+def test_api_cover_letter_happy_path(client, fake_db):
+    posting_id = _seed_scored_posting(client)
+    client.post(f"/api/postings/{posting_id}/assemble", json={}, auth=(DASH_USER, DASH_PASS))
+
+    resp = client.post(f"/api/postings/{posting_id}/cover-letter", json={}, auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["cover_letter_text"]
+    assert body["signed_url"].startswith("https://")
+    assert any(e["event"] == "cover_letter_generated" for e in fake_db.events)
+
+    # stored on the variant, and comes back through /api/postings too
+    posting = client.get("/api/postings", auth=(DASH_USER, DASH_PASS)).json()[0]
+    assert posting["id"] == posting_id
+
+
+def test_api_cover_letter_unknown_posting_404s(client):
+    resp = client.post("/api/postings/999999/cover-letter", json={}, auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 404
+
+
+def test_api_variant_detail_includes_cover_letter_signed_url_once_generated(client, fake_db):
+    posting_id = _seed_scored_posting(client)
+    client.post(f"/api/postings/{posting_id}/assemble", json={}, auth=(DASH_USER, DASH_PASS))
+    client.post(f"/api/postings/{posting_id}/cover-letter", json={}, auth=(DASH_USER, DASH_PASS))
+
+    resp = client.get(f"/api/postings/{posting_id}/variant", auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 200
+    assert resp.json()["cover_letter_signed_url"].startswith("https://")
+
+
 # ---- outreach ----
 
 
@@ -459,6 +504,22 @@ def test_api_application_patch_reject_logs_reason_and_hides_posting(client, fake
     assert reject_events and reject_events[0]["payload"]["reason"] == "wrong seniority"
 
 
+def test_api_application_patch_back_to_queue_after_approve(client, fake_db):
+    posting_id = _seed_scored_posting(client)
+    client.post(f"/api/postings/{posting_id}/assemble", json={}, auth=(DASH_USER, DASH_PASS))
+    approved = client.get("/api/postings", auth=(DASH_USER, DASH_PASS)).json()[0]
+    assert approved["stage"] == "approved"
+
+    resp = client.patch(
+        f"/api/postings/{posting_id}/application", json={"status": "queued"},
+        auth=(DASH_USER, DASH_PASS),
+    )
+    assert resp.status_code == 200
+    p = client.get("/api/postings", auth=(DASH_USER, DASH_PASS)).json()[0]
+    assert p["stage"] == "queue"
+    assert p["app"]["file"]  # the built variant is still there, not discarded
+
+
 def test_api_application_patch_mark_submitted_moves_to_applied(client, fake_db):
     posting_id = _seed_scored_posting(client)
     resp = client.patch(
@@ -530,6 +591,93 @@ def test_api_score_override_404_when_not_scored(client):
         auth=(DASH_USER, DASH_PASS),
     )
     assert resp.status_code == 404
+
+
+# ---- answer workbench ----
+
+
+def test_api_answers_requires_auth(client):
+    resp = client.get("/api/answers")
+    assert resp.status_code == 401
+
+
+def test_api_answers_returns_list(client, fake_db):
+    fake_db.answers.append({"ref": "A7", "question_type": "tell_me_about_a_failure", "text": "x", "status": "ready"})
+    resp = client.get("/api/answers", auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 200
+    assert resp.json()[0]["ref"] == "A7"
+
+
+def test_api_answers_chat_requires_auth(client):
+    resp = client.post("/api/answers/chat", json={"messages": []})
+    assert resp.status_code == 401
+
+
+def test_api_answers_chat_requires_messages(client):
+    resp = client.post("/api/answers/chat", json={}, auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 400
+
+
+def test_api_answers_chat_returns_reply(client):
+    resp = client.post(
+        "/api/answers/chat",
+        json={"messages": [{"role": "user", "content": "Draft an answer about X."}]},
+        auth=(DASH_USER, DASH_PASS),
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["reply"] == "Here's a draft answer grounded in your bullets."
+    assert body["cost_usd"] == 0.008
+
+
+def test_api_answers_chat_with_posting_context_404s_on_unknown_posting(client):
+    resp = client.post(
+        "/api/answers/chat",
+        json={"messages": [{"role": "user", "content": "x"}], "posting_id": 999999},
+        auth=(DASH_USER, DASH_PASS),
+    )
+    assert resp.status_code == 404
+
+
+def test_api_answers_chat_with_posting_context(client, fake_db):
+    posting_id = _seed_scored_posting(client)
+    resp = client.post(
+        "/api/answers/chat",
+        json={"messages": [{"role": "user", "content": "x"}], "posting_id": posting_id},
+        auth=(DASH_USER, DASH_PASS),
+    )
+    assert resp.status_code == 200
+
+
+def test_api_answers_save_requires_text_and_question_type(client):
+    resp = client.post("/api/answers/save", json={"text": "x"}, auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 400
+
+
+def test_api_answers_save_creates_new_ref_when_none_given(client, fake_db):
+    fake_db.answers.append({"ref": "A11", "question_type": "x", "text": "x", "status": "ready"})
+    resp = client.post(
+        "/api/answers/save",
+        json={"question_type": "new_question", "text": "The drafted answer."},
+        auth=(DASH_USER, DASH_PASS),
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ref"] == "A12"
+    assert body["status"] == "ready"
+    assert any(e["event"] == "saved" for e in fake_db.events)
+
+
+def test_api_answers_save_updates_existing_ref(client, fake_db):
+    fake_db.answers.append({"ref": "A6", "question_type": "biggest_system_built", "text": "old", "status": "draft"})
+    resp = client.post(
+        "/api/answers/save",
+        json={"ref": "A6", "question_type": "biggest_system_built", "text": "new text", "status": "ready"},
+        auth=(DASH_USER, DASH_PASS),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["text"] == "new text"
+    assert len(fake_db.answers) == 1  # updated in place, not duplicated
 
 
 # ---- metrics ----
