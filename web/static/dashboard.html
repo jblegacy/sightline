@@ -634,7 +634,7 @@ function drawApps(){
              <br><button class="btn sm ghost" data-diff="${p.id}" style="margin-top:4px">View changes</button>
              <button class="btn sm ghost" data-regenresume="${p.id}" style="margin-top:4px">Regenerate resume</button>
              ${ap.sent&&!ap.finalFile?`<button class="btn sm ghost" data-final="${p.id}" style="margin-top:4px">Record final</button>`:''}
-             <br>${ap.coverLetterFile?`<a href="#" class="mono" data-dlcl="${p.id}" style="font-size:11.5px">${esc(ap.coverLetterFile)}</a> <button class="btn sm ghost" data-covergen="${p.id}" style="margin-top:4px">Regenerate</button>`:`<button class="btn sm ghost" data-covergen="${p.id}" style="margin-top:4px">Generate cover letter</button>`}
+             <br>${ap.coverLetterFile?`<a href="#" class="mono" data-dlcl="${p.id}" style="font-size:11.5px">${esc(ap.coverLetterFile)}</a> <button class="btn sm ghost" data-covergen="${p.id}" style="margin-top:4px">Regenerate</button> <button class="btn sm ghost" data-editcl="${p.id}" style="margin-top:4px">Edit</button>`:`<button class="btn sm ghost" data-covergen="${p.id}" style="margin-top:4px">Generate cover letter</button>`}
              <button class="btn sm ghost" data-sandbox="${p.id}" style="margin-top:4px">Sandbox</button>`:'<span class="cc">building\u2026</span>'}</td>
         <td><span class="pill ${pillCls}">${esc(st)}</span><br>
             <select data-st="${p.id}" style="margin-top:5px">${STATUSES.map(x=>`<option ${x===st?'selected':''}>${x}</option>`).join('')}</select></td>
@@ -648,6 +648,7 @@ function drawApps(){
 let curDiffId=null;
 let curSandboxId=null;
 let SANDBOX_DRAFTS=[];
+let CL_EDIT_CTX=null;
 
 async function openCoverLetterSandbox(id){
   const p=P.find(x=>x.id===id);
@@ -669,13 +670,38 @@ async function openCoverLetterSandbox(id){
         <p class="clhint">${esc(v.description)}</p>
         <div class="clmeta">${v.words} words</div>
         <div class="clbody">${esc(v.text)}</div>
-        <button class="btn sm go" data-usecl="${esc(v.style)}">Use this one</button>
+        <button class="btn sm go" data-usecl="${esc(v.style)}">Edit &amp; use</button>
       </div>`).join('')}</div>
-      <p class="hint" style="margin:14px 0 0">Nothing here is saved yet — picking one renders and uploads the real .docx and replaces whatever cover letter this posting had before.</p>`;
+      <p class="hint" style="margin:14px 0 0">Nothing here is saved yet — "Edit &amp; use" opens the draft for a last look before it's rendered, uploaded, and replaces whatever cover letter this posting had before.</p>`;
   }catch(err){
     $('#clBody').innerHTML='<div class="empty">Preview generation failed — see console</div>';
     console.error('cover letter preview failed:',err);
   }
+}
+
+// Shared editor for a sandbox-picked draft OR an already-saved cover letter.
+// previousText is set only in the latter case, so feedback notes can be
+// reviewed later against what actually changed.
+function showCoverLetterEditor(id,text,titleSuffix,style,previousText){
+  const p=P.find(x=>x.id===id);
+  curSandboxId=id;
+  CL_EDIT_CTX={postingId:id,style:style||null,previousText:previousText||null};
+  $('#clTitle').textContent=`${p.co} — ${p.ti} · ${titleSuffix}`;
+  $('#clBody').innerHTML=`
+    <textarea id="clEditText" class="notesin" style="width:100%;min-height:300px;font-size:13px;line-height:1.5;font-family:var(--body)"></textarea>
+    <div class="clmeta" id="clWordCount" style="margin-top:6px"></div>
+    <label style="display:block;margin-top:14px;font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">What would you change about this draft? (optional — logged for future tuning, never applied automatically)</label>
+    <textarea id="clFeedbackNote" class="notesin" rows="2" style="width:100%;margin-top:5px" placeholder="e.g. too formal, cut the second paragraph, always open this way..."></textarea>
+    <div style="margin-top:14px;display:flex;gap:8px">
+      <button class="btn sm go" id="clSave">Save cover letter</button>
+      <button class="btn sm ghost" id="clCancel">Cancel</button>
+    </div>`;
+  const ta=$('#clEditText');
+  ta.value=text;
+  const updateCount=()=>{const n=ta.value.trim().split(/\s+/).filter(Boolean).length;$('#clWordCount').textContent=n+' words'};
+  updateCount();
+  ta.addEventListener('input',updateCount);
+  $('#clMask').classList.add('on');
 }
 
 async function ensureVariantLoaded(p){
@@ -969,21 +995,44 @@ document.addEventListener('click',e=>{
   const sb=e.target.dataset.sandbox;
   if(sb){openCoverLetterSandbox(+sb);return}
   if(e.target.id==='clClose'||e.target.id==='clMask'){$('#clMask').classList.remove('on');return}
+
+  const ce=e.target.dataset.editcl;
+  if(ce){
+    (async()=>{
+      const id=+ce;
+      const p=P.find(x=>x.id===id);
+      const v=p&&await ensureVariantLoaded(p);
+      if(!v||!v.cover_letter_text){toast('No cover letter to edit yet');return}
+      showCoverLetterEditor(id,v.cover_letter_text,'edit cover letter',null,v.cover_letter_text);
+    })();
+    return}
+
   const uc=e.target.dataset.usecl;
   if(uc){
+    const draft=SANDBOX_DRAFTS.find(v=>v.style===uc);
+    showCoverLetterEditor(curSandboxId,draft.text,`edit "${draft.label}" draft`,draft.style,null);
+    return}
+
+  if(e.target.id==='clCancel'){$('#clMask').classList.remove('on');return}
+  if(e.target.id==='clSave'){
+    const text=$('#clEditText').value.trim();
+    const note=$('#clFeedbackNote').value.trim();
+    if(text.length<50){toast('Too short — needs at least 50 characters');return}
     e.target.disabled=true; e.target.textContent='Saving…';
     (async()=>{
-      const draft=SANDBOX_DRAFTS.find(v=>v.style===uc);
+      const payload={text};
+      if(note)payload.feedback_note=note;
+      if(CL_EDIT_CTX.previousText)payload.previous_text=CL_EDIT_CTX.previousText;
       try{
-        const resp=await fetch(`/api/postings/${curSandboxId}/cover-letter`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:draft.text})});
+        const resp=await fetch(`/api/postings/${CL_EDIT_CTX.postingId}/cover-letter`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
         if(!resp.ok){const err=await resp.json().catch(()=>({detail:'save failed'}));
           toast(`Failed: ${err.detail||resp.status}`);
-          e.target.disabled=false;e.target.textContent='Use this one';return}
-        toast(`Saved the ${draft.label} draft`);
+          e.target.disabled=false;e.target.textContent='Save cover letter';return}
+        toast(note?'Saved — feedback logged for future tuning':'Cover letter saved');
         $('#clMask').classList.remove('on');
         await reloadPostings();
-      }catch(err){toast('Save failed — see console');console.error('use draft failed:',err);
-        e.target.disabled=false;e.target.textContent='Use this one';}
+      }catch(err){toast('Save failed — see console');console.error('save cover letter failed:',err);
+        e.target.disabled=false;e.target.textContent='Save cover letter';}
     })();
     return}
   if(e.target.id==='mdl'){

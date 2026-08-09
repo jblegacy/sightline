@@ -237,6 +237,7 @@ def _cover_letter_context(posting_id: int, db: SightlineDB) -> tuple[dict[str, A
 def _save_cover_letter(
     db: SightlineDB, posting_id: int, posting: dict[str, Any], variant_row: dict[str, Any],
     score: dict[str, Any], text: str, cost_usd: float,
+    feedback_note: str | None = None, previous_text: str | None = None,
 ) -> dict[str, Any]:
     company = (posting.get("companies") or {}).get("name", "Unknown")
     docx_bytes = render_cover_letter_docx(text, company, posting["title"], greeting_for(score))
@@ -252,6 +253,18 @@ def _save_cover_letter(
         entity_type="variant", entity_id=variant_row["id"], event="cover_letter_generated",
         payload={"posting_id": posting_id, "cost_usd": round(cost_usd, 5)},
     )
+    # Not applied to anything automatically — the calibration loop is a
+    # human reviewing these later, same as reject-reasons and score
+    # overrides. Kept as its own event so it's easy to query separately
+    # from every plain regenerate, which fires cover_letter_generated too.
+    if feedback_note and feedback_note.strip():
+        db.log_event(
+            entity_type="variant", entity_id=variant_row["id"], event="cover_letter_feedback",
+            payload={
+                "posting_id": posting_id, "note": feedback_note.strip(),
+                "edited_text": text, "previous_text": previous_text,
+            },
+        )
     return {**updated, "signed_url": signed_url}
 
 
@@ -300,9 +313,12 @@ def api_cover_letter(
 ) -> dict:
     """Generates (or regenerates) and saves a cover letter echoing the same
     bullets already selected for this posting's resume — requires a built
-    variant. Pass body.text (a draft already picked from /preview) to save
-    it directly without another model call; otherwise generates fresh with
-    body.style (default "warm"). Grounded only in verified bullets; see
+    variant. Pass body.text (a draft already picked from /preview, or a
+    hand edit of one already saved) to save it directly without another
+    model call; otherwise generates fresh with body.style (default "warm").
+    body.feedback_note, if present, is logged as a distinct
+    cover_letter_feedback event — a durable calibration trail rather than
+    a chat aside that evaporates. Grounded only in verified bullets; see
     sightline/cover_letter.py."""
     posting, variant_row, score = _cover_letter_context(posting_id, db)
 
@@ -322,7 +338,10 @@ def api_cover_letter(
         except ValueError as e:
             raise HTTPException(status_code=502, detail=str(e)) from e
 
-    return _save_cover_letter(db, posting_id, posting, variant_row, score, text, cost_usd)
+    return _save_cover_letter(
+        db, posting_id, posting, variant_row, score, text, cost_usd,
+        feedback_note=body.get("feedback_note"), previous_text=body.get("previous_text"),
+    )
 
 
 @app.post("/api/postings/{posting_id}/outreach", dependencies=[Depends(require_auth)])

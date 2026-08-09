@@ -482,6 +482,37 @@ def test_api_cover_letter_rejects_too_short_provided_text(client, fake_db):
     assert resp.status_code == 400
 
 
+def test_api_cover_letter_logs_feedback_note_as_its_own_event(client, fake_db):
+    # The feedback loop: an edit note is durable calibration data, not
+    # applied to anything automatically — a human reviews it later.
+    posting_id = _seed_scored_posting(client)
+    client.post(f"/api/postings/{posting_id}/assemble", json={}, auth=(DASH_USER, DASH_PASS))
+
+    edited_text = "The edited version of the letter, long enough to clear the length floor easily." * 2
+    resp = client.post(
+        f"/api/postings/{posting_id}/cover-letter",
+        json={"text": edited_text, "feedback_note": "too formal, cut the second paragraph", "previous_text": "old draft"},
+        auth=(DASH_USER, DASH_PASS),
+    )
+    assert resp.status_code == 200
+
+    feedback_events = [e for e in fake_db.events if e["event"] == "cover_letter_feedback"]
+    assert len(feedback_events) == 1
+    payload = feedback_events[0]["payload"]
+    assert payload["note"] == "too formal, cut the second paragraph"
+    assert payload["edited_text"] == edited_text
+    assert payload["previous_text"] == "old draft"
+
+
+def test_api_cover_letter_skips_feedback_event_when_no_note_given(client, fake_db):
+    posting_id = _seed_scored_posting(client)
+    client.post(f"/api/postings/{posting_id}/assemble", json={}, auth=(DASH_USER, DASH_PASS))
+
+    resp = client.post(f"/api/postings/{posting_id}/cover-letter", json={}, auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 200
+    assert not [e for e in fake_db.events if e["event"] == "cover_letter_feedback"]
+
+
 # ---- outreach ----
 
 
