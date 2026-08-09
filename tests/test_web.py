@@ -416,6 +416,72 @@ def test_api_variant_detail_includes_cover_letter_signed_url_once_generated(clie
     assert resp.json()["cover_letter_signed_url"].startswith("https://")
 
 
+# ---- cover letter sandbox (preview) ----
+
+
+def test_api_cover_letter_preview_requires_auth(client):
+    resp = client.post("/api/postings/1/cover-letter/preview", json={})
+    assert resp.status_code == 401
+
+
+def test_api_cover_letter_preview_requires_a_built_resume_first(client):
+    posting_id = _seed_scored_posting(client)
+    resp = client.post(f"/api/postings/{posting_id}/cover-letter/preview", json={}, auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 400
+
+
+def test_api_cover_letter_preview_returns_all_three_styles_unsaved(client, fake_db):
+    posting_id = _seed_scored_posting(client)
+    client.post(f"/api/postings/{posting_id}/assemble", json={}, auth=(DASH_USER, DASH_PASS))
+
+    resp = client.post(f"/api/postings/{posting_id}/cover-letter/preview", json={}, auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 200
+    body = resp.json()
+    styles = {v["style"] for v in body["variants"]}
+    assert styles == {"traditional", "compressed", "warm"}
+    for v in body["variants"]:
+        assert v["text"]
+        assert v["words"] > 0
+        assert v["label"]
+        assert v["description"]
+    assert any(e["event"] == "cover_letter_preview_generated" for e in fake_db.events)
+
+    # nothing saved to the variant — preview is scratch space only
+    variant_resp = client.get(f"/api/postings/{posting_id}/variant", auth=(DASH_USER, DASH_PASS))
+    assert variant_resp.json()["cover_letter_signed_url"] is None
+
+
+def test_api_cover_letter_saves_a_picked_preview_draft_without_regenerating(client, fake_db):
+    posting_id = _seed_scored_posting(client)
+    client.post(f"/api/postings/{posting_id}/assemble", json={}, auth=(DASH_USER, DASH_PASS))
+
+    class ExplodingAnthropic(FakeAnthropic):
+        def chat_call(self, **kwargs):
+            raise AssertionError("should not regenerate — a picked draft's text was already provided")
+
+    app.dependency_overrides[get_anthropic] = lambda: ExplodingAnthropic()
+    chosen_text = "A hand-picked draft from the sandbox, long enough to clear the floor." * 2
+    resp = client.post(
+        f"/api/postings/{posting_id}/cover-letter", json={"text": chosen_text},
+        auth=(DASH_USER, DASH_PASS),
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["cover_letter_text"] == chosen_text
+    assert body["signed_url"].startswith("https://")
+
+
+def test_api_cover_letter_rejects_too_short_provided_text(client, fake_db):
+    posting_id = _seed_scored_posting(client)
+    client.post(f"/api/postings/{posting_id}/assemble", json={}, auth=(DASH_USER, DASH_PASS))
+
+    resp = client.post(
+        f"/api/postings/{posting_id}/cover-letter", json={"text": "too short"},
+        auth=(DASH_USER, DASH_PASS),
+    )
+    assert resp.status_code == 400
+
+
 # ---- outreach ----
 
 

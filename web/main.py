@@ -20,7 +20,14 @@ from sightline.anthropic_client import AnthropicClient
 from sightline.assembly import assemble, variant_detail
 from sightline.budget import used_today
 from sightline.config import Settings, get_settings
-from sightline.cover_letter import generate_cover_letter, greeting_for, render_cover_letter_docx
+from sightline.cover_letter import (
+    STYLE_DESCRIPTIONS,
+    STYLE_LABELS,
+    generate_cover_letter,
+    generate_cover_letter_variants,
+    greeting_for,
+    render_cover_letter_docx,
+)
 from sightline.dashboard import postings_to_dashboard_p, search_profiles_to_dashboard, settings_to_cfg_qv
 from sightline.db import SightlineDB
 from sightline.ingest import handle_webhook_event
@@ -211,40 +218,26 @@ def api_variant_detail(posting_id: int, db: SightlineDB = Depends(get_db)) -> di
         raise HTTPException(status_code=404, detail=str(e)) from e
 
 
-@app.post("/api/postings/{posting_id}/cover-letter", dependencies=[Depends(require_auth)])
-def api_cover_letter(
-    posting_id: int,
-    db: SightlineDB = Depends(get_db),
-    anthropic: AnthropicClient = Depends(get_anthropic),
-) -> dict:
-    """Generates (or regenerates) a cover letter echoing the same bullets
-    already selected for this posting's resume — requires a built variant.
-    Grounded only in verified bullets; see sightline/cover_letter.py."""
+def _cover_letter_context(posting_id: int, db: SightlineDB) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     try:
         posting = db.get_posting(posting_id)
     except LookupError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
-
     variants = posting.get("variants") or []
     if not variants:
         raise HTTPException(
             status_code=400, detail="build a resume first — the cover letter echoes its bullet selection"
         )
-    variant_row = variants[0]
     scores = posting.get("scores") or []
     if not scores:
         raise HTTPException(status_code=404, detail=f"posting {posting_id} has not been scored yet")
-    score = scores[0]
+    return posting, variants[0], scores[0]
 
-    bullets = db.get_bullets_full()
-    answers = db.get_answers()
-    try:
-        text, cost_usd = generate_cover_letter(
-            anthropic, posting, score, bullets, variant_row.get("bullet_refs") or [], answers
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=502, detail=str(e)) from e
 
+def _save_cover_letter(
+    db: SightlineDB, posting_id: int, posting: dict[str, Any], variant_row: dict[str, Any],
+    score: dict[str, Any], text: str, cost_usd: float,
+) -> dict[str, Any]:
     company = (posting.get("companies") or {}).get("name", "Unknown")
     docx_bytes = render_cover_letter_docx(text, company, posting["title"], greeting_for(score))
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -260,6 +253,76 @@ def api_cover_letter(
         payload={"posting_id": posting_id, "cost_usd": round(cost_usd, 5)},
     )
     return {**updated, "signed_url": signed_url}
+
+
+@app.post("/api/postings/{posting_id}/cover-letter/preview", dependencies=[Depends(require_auth)])
+def api_cover_letter_preview(
+    posting_id: int,
+    db: SightlineDB = Depends(get_db),
+    anthropic: AnthropicClient = Depends(get_anthropic),
+) -> dict:
+    """The sandbox: generates all three structural styles from the same
+    grounding data in one call — text only, nothing rendered or saved.
+    POST /cover-letter with body.text set to whichever draft is picked to
+    actually save one. See sightline/cover_letter.py STYLE_STRUCTURES."""
+    posting, variant_row, score = _cover_letter_context(posting_id, db)
+    bullets = db.get_bullets_full()
+    answers = db.get_answers()
+    try:
+        results = generate_cover_letter_variants(
+            anthropic, posting, score, bullets, variant_row.get("bullet_refs") or [], answers
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    total_cost = sum(cost for _, cost in results.values())
+    db.log_event(
+        entity_type="variant", entity_id=variant_row["id"], event="cover_letter_preview_generated",
+        payload={"posting_id": posting_id, "styles": list(results.keys()), "cost_usd": round(total_cost, 5)},
+    )
+    return {
+        "variants": [
+            {
+                "style": style, "label": STYLE_LABELS[style], "description": STYLE_DESCRIPTIONS[style],
+                "text": text, "words": len(text.split()),
+            }
+            for style, (text, _cost) in results.items()
+        ],
+        "cost_usd": round(total_cost, 5),
+    }
+
+
+@app.post("/api/postings/{posting_id}/cover-letter", dependencies=[Depends(require_auth)])
+def api_cover_letter(
+    posting_id: int,
+    body: dict[str, Any],
+    db: SightlineDB = Depends(get_db),
+    anthropic: AnthropicClient = Depends(get_anthropic),
+) -> dict:
+    """Generates (or regenerates) and saves a cover letter echoing the same
+    bullets already selected for this posting's resume — requires a built
+    variant. Pass body.text (a draft already picked from /preview) to save
+    it directly without another model call; otherwise generates fresh with
+    body.style (default "warm"). Grounded only in verified bullets; see
+    sightline/cover_letter.py."""
+    posting, variant_row, score = _cover_letter_context(posting_id, db)
+
+    text = (body.get("text") or "").strip()
+    if text:
+        if len(text) < 50:
+            raise HTTPException(status_code=400, detail=f"cover letter text too short ({len(text)} chars)")
+        cost_usd = 0.0
+    else:
+        bullets = db.get_bullets_full()
+        answers = db.get_answers()
+        style = body.get("style") or "warm"
+        try:
+            text, cost_usd = generate_cover_letter(
+                anthropic, posting, score, bullets, variant_row.get("bullet_refs") or [], answers, style=style
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=502, detail=str(e)) from e
+
+    return _save_cover_letter(db, posting_id, posting, variant_row, score, text, cost_usd)
 
 
 @app.post("/api/postings/{posting_id}/outreach", dependencies=[Depends(require_auth)])

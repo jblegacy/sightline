@@ -250,6 +250,13 @@ table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dlegend span{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10.5px;color:var(--muted)}
 .dlegend i{width:10px;height:10px;display:inline-block}
 .summarybox{background:var(--panel2);border-left:3px solid var(--gate);padding:9px 11px;font-size:12.5px;margin-bottom:6px}
+.clcols{display:grid;grid-template-columns:1fr 1fr 1fr;gap:2px;background:var(--rule)}
+.clcard{background:var(--panel);padding:15px;display:flex;flex-direction:column}
+.clcard h4{font-family:var(--display);font-weight:600;font-size:.98rem;margin:0 0 3px}
+.clcard .clhint{font-size:11.5px;color:var(--muted);margin:0 0 8px}
+.clcard .clmeta{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:9px;padding-bottom:9px;border-bottom:2px solid var(--rule)}
+.clbody{white-space:pre-wrap;font-size:12.5px;flex:1;overflow:auto;max-height:360px;margin:0 0 12px;padding-right:2px}
+@media (max-width:900px){.clcols{grid-template-columns:1fr}}
 .notesin{width:100%;font-family:var(--body);font-size:12.5px;padding:5px 7px;border:1px solid var(--rule);background:var(--panel);min-height:30px}
 @media (max-width:760px){.dcols{grid-template-columns:1fr}.mask{padding:10px}}
 
@@ -487,6 +494,11 @@ table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     <div><button class="btn sm" id="mdl">Download .docx</button> <button class="btn sm ghost" id="mclose">Close</button></div></div>
   <div class="mbody" id="mbody"></div>
 </div></div>
+<div class="mask" id="clMask"><div class="modal">
+  <div class="mhead"><h3 id="clTitle">Cover letter sandbox</h3>
+    <div><button class="btn sm ghost" id="clClose">Close</button></div></div>
+  <div class="mbody" id="clBody"></div>
+</div></div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -622,7 +634,8 @@ function drawApps(){
              <br><button class="btn sm ghost" data-diff="${p.id}" style="margin-top:4px">View changes</button>
              <button class="btn sm ghost" data-regenresume="${p.id}" style="margin-top:4px">Regenerate resume</button>
              ${ap.sent&&!ap.finalFile?`<button class="btn sm ghost" data-final="${p.id}" style="margin-top:4px">Record final</button>`:''}
-             <br>${ap.coverLetterFile?`<a href="#" class="mono" data-dlcl="${p.id}" style="font-size:11.5px">${esc(ap.coverLetterFile)}</a> <button class="btn sm ghost" data-covergen="${p.id}" style="margin-top:4px">Regenerate</button>`:`<button class="btn sm ghost" data-covergen="${p.id}" style="margin-top:4px">Generate cover letter</button>`}`:'<span class="cc">building\u2026</span>'}</td>
+             <br>${ap.coverLetterFile?`<a href="#" class="mono" data-dlcl="${p.id}" style="font-size:11.5px">${esc(ap.coverLetterFile)}</a> <button class="btn sm ghost" data-covergen="${p.id}" style="margin-top:4px">Regenerate</button>`:`<button class="btn sm ghost" data-covergen="${p.id}" style="margin-top:4px">Generate cover letter</button>`}
+             <button class="btn sm ghost" data-sandbox="${p.id}" style="margin-top:4px">Sandbox</button>`:'<span class="cc">building\u2026</span>'}</td>
         <td><span class="pill ${pillCls}">${esc(st)}</span><br>
             <select data-st="${p.id}" style="margin-top:5px">${STATUSES.map(x=>`<option ${x===st?'selected':''}>${x}</option>`).join('')}</select></td>
         <td class="mono" style="font-size:11.5px">${esc(ap.sent||'\u2014')}</td>
@@ -633,6 +646,38 @@ function drawApps(){
 }
 
 let curDiffId=null;
+let curSandboxId=null;
+let SANDBOX_DRAFTS=[];
+
+async function openCoverLetterSandbox(id){
+  const p=P.find(x=>x.id===id);
+  if(!p||!p.app||!p.app.file){toast('Build a resume first — the cover letter echoes its bullet selection');return}
+  curSandboxId=id;
+  SANDBOX_DRAFTS=[];
+  $('#clTitle').textContent=`${p.co} — ${p.ti} · cover letter sandbox`;
+  $('#clBody').innerHTML='<div class="empty">Generating three drafts… (three model calls, ~15-20s)</div>';
+  $('#clMask').classList.add('on');
+  try{
+    const resp=await fetch(`/api/postings/${id}/cover-letter/preview`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    if(!resp.ok){const err=await resp.json().catch(()=>({detail:'preview generation failed'}));
+      $('#clBody').innerHTML=`<div class="empty">Failed: ${esc(err.detail||String(resp.status))}</div>`;return}
+    const body=await resp.json();
+    SANDBOX_DRAFTS=body.variants;
+    $('#clBody').innerHTML=`<div class="clcols">${body.variants.map(v=>`
+      <div class="clcard">
+        <h4>${esc(v.label)}</h4>
+        <p class="clhint">${esc(v.description)}</p>
+        <div class="clmeta">${v.words} words</div>
+        <div class="clbody">${esc(v.text)}</div>
+        <button class="btn sm go" data-usecl="${esc(v.style)}">Use this one</button>
+      </div>`).join('')}</div>
+      <p class="hint" style="margin:14px 0 0">Nothing here is saved yet — picking one renders and uploads the real .docx and replaces whatever cover letter this posting had before.</p>`;
+  }catch(err){
+    $('#clBody').innerHTML='<div class="empty">Preview generation failed — see console</div>';
+    console.error('cover letter preview failed:',err);
+  }
+}
+
 async function ensureVariantLoaded(p){
   if(p.variant){return p.variant}
   if(!p.app){return null}
@@ -920,6 +965,27 @@ document.addEventListener('click',e=>{
   const df=e.target.dataset.diff;
   if(df){renderDiff(+df);return}
   if(e.target.id==='mclose'||e.target.id==='mask'){$('#mask').classList.remove('on');return}
+
+  const sb=e.target.dataset.sandbox;
+  if(sb){openCoverLetterSandbox(+sb);return}
+  if(e.target.id==='clClose'||e.target.id==='clMask'){$('#clMask').classList.remove('on');return}
+  const uc=e.target.dataset.usecl;
+  if(uc){
+    e.target.disabled=true; e.target.textContent='Saving…';
+    (async()=>{
+      const draft=SANDBOX_DRAFTS.find(v=>v.style===uc);
+      try{
+        const resp=await fetch(`/api/postings/${curSandboxId}/cover-letter`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:draft.text})});
+        if(!resp.ok){const err=await resp.json().catch(()=>({detail:'save failed'}));
+          toast(`Failed: ${err.detail||resp.status}`);
+          e.target.disabled=false;e.target.textContent='Use this one';return}
+        toast(`Saved the ${draft.label} draft`);
+        $('#clMask').classList.remove('on');
+        await reloadPostings();
+      }catch(err){toast('Save failed — see console');console.error('use draft failed:',err);
+        e.target.disabled=false;e.target.textContent='Use this one';}
+    })();
+    return}
   if(e.target.id==='mdl'){
     (async()=>{
       const p=P.find(x=>x.id===curDiffId);
@@ -966,7 +1032,7 @@ document.addEventListener('change',e=>{
   const nt=e.target.dataset.nt;
   if(nt){patchApplication(nt,{notes:e.target.value});}
 });
-document.addEventListener('keydown',e=>{if(e.key==='Escape')$('#mask').classList.remove('on')});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){$('#mask').classList.remove('on');$('#clMask').classList.remove('on')}});
 
 // ---------------- settings ----------------
 // Real defaults until /api/settings responds — loadLiveData() below overwrites these.
