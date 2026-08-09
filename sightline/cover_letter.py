@@ -45,9 +45,11 @@ not a fact.
 day, in plain terms).
 3. A bullet list of 2-4 concrete, quantified wins, each one a close paraphrase or near-verbatim \
 excerpt of one of the verified bullets below — never a new number, outcome, or claim. Pick \
-whichever bullets best match the JD's most central, most-detailed ask; you don't need to touch \
-every responsibility category it lists. Each bullet line starts with "- " and is one line, no \
-sub-clauses.
+whichever bullets best match the JD's most central, most-detailed ask. When bullets are similarly \
+relevant, prefer the one that actually carries a hard number over one that doesn't — a bullet \
+with no number is a weaker choice for this list unless nothing more quantified fits that part of \
+the JD. You don't need to touch every responsibility category it lists. Each bullet line starts \
+with "- " and is one line, no sub-clauses.
 4. Close — ONE sentence, forward-looking, on what you'd bring from here.
 
 Never name a gap, missing skill, or unmet requirement anywhere in the letter — this overrides \
