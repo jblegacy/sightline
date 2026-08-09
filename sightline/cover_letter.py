@@ -34,12 +34,13 @@ other candidates ("further than most candidates," "unlike other applicants") —
 who else applied, and the claim reads as arrogant rather than as evidence.
 
 Structure, in this order:
-1. Opening — ONE sentence, plain and direct: "I'm applying for the [Role] at [Company]" (this \
-specific opener is fine and overrides VOICE RULE 11 below for this one line — the candidate has \
-confirmed it against real examples). What's NOT fine: restating what the role is or does back to \
-the reader ("This role is about X, and I've been doing Y") — they wrote the posting, they know \
-what it is; don't explain their own job to them. No "I'm confident I'm the ideal candidate" \
-either — that's a conclusion about yourself, not a fact.
+1. Opening — ONE sentence, plain and direct: "I'm excited to apply for the [Role] at [Company]" \
+(this specific opener is fine and overrides VOICE RULES 6, 11, and 12 below for this one line \
+only — the candidate has confirmed it, against real examples, as the opener he wants). What's \
+NOT fine: restating what the role is or does back to the reader ("This role is about X, and I've \
+been doing Y") — they wrote the posting, they know what it is; don't explain their own job to \
+them. No "I'm confident I'm the ideal candidate" either — that's a conclusion about yourself, \
+not a fact.
 2. Context — ONE, at most two, sentences setting up the achievements below (what you do day to \
 day, in plain terms).
 3. A bullet list of 2-4 concrete, quantified wins, each one a close paraphrase or near-verbatim \
