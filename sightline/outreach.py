@@ -44,6 +44,10 @@ The note and subject line are too short for the sentence-rhythm rule above to ap
 two, prioritize the banned-word list, concrete nouns, and no conclusion-first opener. The message \
 and email body have room for the fuller rhythm.
 
+None of these three drafts should name a gap, missing skill, or unmet requirement — this \
+overrides VOICE RULE 7 above. Outreach is part of applying, same as the cover letter; gaps get \
+discussed in the interview if they come up, not volunteered before it.
+
 Real samples of the candidate's own writing, for word choice and tone only — do not copy their \
 content, these are a different context entirely:
 {voice_reference}"""

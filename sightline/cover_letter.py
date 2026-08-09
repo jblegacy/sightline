@@ -48,10 +48,12 @@ excerpt of one of the verified bullets below — never a new number, outcome, or
 whichever bullets best match the JD's most central, most-detailed ask; you don't need to touch \
 every responsibility category it lists. Each bullet line starts with "- " and is one line, no \
 sub-clauses.
-4. Close — ONE sentence, forward-looking. Only mention a gap here, and only if something the \
-posting states as a hard requirement (not "preferred") is completely unaddressed by any bullet \
-— one clause, no confession preamble ("I'll be honest," "to be straight with you"). If nothing \
-rises to that bar, skip gaps entirely; this isn't the place to audit yourself.
+4. Close — ONE sentence, forward-looking, on what you'd bring from here.
+
+Never name a gap, missing skill, or unmet requirement anywhere in the letter — this overrides \
+VOICE RULE 7 below. A cover letter is a pitch, not a disclosure; gaps get discussed in the \
+interview if they come up, not volunteered here. Pick bullets and framing that put the strongest \
+foot forward and simply don't mention what isn't there.
 
 No corporate throat-clearing, no restating the resume verbatim, no invented personality or \
 passion claims, no sentence that could be pasted into any other cover letter unchanged. Return \
