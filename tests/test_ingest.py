@@ -148,8 +148,13 @@ class FakeDB:
     def upload_document(self, bucket: str, path: str, content: bytes) -> None:
         self.uploaded_documents.append((bucket, path, content))
 
-    def create_signed_url(self, bucket: str, path: str, expires_in: int = 3600) -> str:
-        return f"https://example.supabase.co/storage/v1/object/sign/{bucket}/{path}?token=fake"
+    def create_signed_url(
+        self, bucket: str, path: str, expires_in: int = 3600, download_filename: str | None = None
+    ) -> str:
+        url = f"https://example.supabase.co/storage/v1/object/sign/{bucket}/{path}?token=fake"
+        if download_filename:
+            url += f"&download={download_filename}"
+        return url
 
     def insert_variant(self, fields: dict[str, Any]) -> dict[str, Any]:
         row = {**fields, "id": len(self.variants) + 1}

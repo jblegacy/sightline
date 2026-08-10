@@ -17,6 +17,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from typing import Any
 
+from sightline.assembly import RESUME_DOWNLOAD_NAME
 from sightline.scoring import DIMENSIONS
 
 _VARIANT_CODE = {"engineer": "eng", "leadership": "lead"}
@@ -26,7 +27,7 @@ _VARIANT_LABEL = {"engineer": "Engineer", "leadership": "Leadership"}
 def _variant_to_app(variant: dict[str, Any]) -> dict[str, Any]:
     return {
         "variant": _VARIANT_LABEL.get(variant.get("kind"), variant.get("kind")),
-        "file": (variant.get("storage_path") or "").split("/")[-1] or None,
+        "file": RESUME_DOWNLOAD_NAME if variant.get("storage_path") else None,
         "finalFile": None,
         "coverLetterFile": (variant.get("cover_letter_storage_path") or "").split("/")[-1] or None,
         "status": "ready to submit",
@@ -40,7 +41,7 @@ def _application_to_app(application: dict[str, Any], variant: dict[str, Any] | N
     variant = variant or {}
     return {
         "variant": _VARIANT_LABEL.get(variant.get("kind"), variant.get("kind")) if variant else None,
-        "file": ((variant.get("storage_path") or "").split("/")[-1] or None) if variant else None,
+        "file": (RESUME_DOWNLOAD_NAME if variant.get("storage_path") else None) if variant else None,
         "finalFile": application.get("final_filename"),
         "coverLetterFile": (variant.get("cover_letter_storage_path") or "").split("/")[-1] or None,
         "status": application.get("status") or ("ready to submit" if variant else "deferred"),

@@ -629,7 +629,7 @@ function drawApps(){
       return `<tr data-id="${p.id}">
         <td><b>${esc(p.co)}</b><br><span class="tag ${p.v}">${esc(ap.variant||'')}</span></td>
         <td>${esc(p.ti)}</td>
-        <td>${ap.file?`<a href="#" class="mono" data-dl="${p.id}" style="font-size:11.5px">${esc(ap.file)}</a>
+        <td>${ap.file?`<a href="#" class="mono" data-dl="${p.id}" style="font-size:11.5px">${esc(ap.file)}</a> <span class="tag ${p.v}">${esc(ap.variant||'')}</span>
              ${ap.finalFile?`<br><span class="cc">sent: ${esc(ap.finalFile)}</span>`:(ap.sent?'<br><span class="cc" style="color:var(--gate)">final not recorded</span>':'')}
              <br><button class="btn sm ghost" data-diff="${p.id}" style="margin-top:4px">View changes</button>
              <button class="btn sm ghost" data-regenresume="${p.id}" style="margin-top:4px">Regenerate resume</button>
