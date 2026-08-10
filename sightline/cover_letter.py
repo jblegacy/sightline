@@ -32,7 +32,7 @@ MODEL = "claude-sonnet-5"
 # gap-handling, voice. Only the shape of the pitch differs.
 STYLE_STRUCTURES = {
     "traditional": """Structure, in this order — this is the most complete of the three formats, \
-HARD CAP 250 words total:
+HARD CAP 320 words total:
 1. Opening — the shared opener below. Nothing else in that sentence.
 2. Context — ONE paragraph (2-3 sentences), prose only, no bullets yet: your most recent or most \
 relevant work, framed by scope and responsibility.
@@ -41,19 +41,26 @@ pulled from the company signals or the JD itself — not generic enthusiasm ("I'
 here"), an actual detail (a market, a product line, something they're building or scaling). If \
 nothing specific enough is available in what you're given, skip this sentence entirely rather \
 than inventing one — a vague substitute is worse than no beat at all.
-4. Transition sentence, then 3-4 lines, each connecting one concrete, quantified achievement to \
-why it specifically matters for this role (see "show your work" below). When achievements are \
-similarly relevant, prefer the one that carries a hard number. Each line starts with "- " and is \
-one line, no sub-clauses.
+4. Transition sentence, then ONE line per JD category identified above, in the JD's own order — \
+not a free pick of your best 2-4 wins. Each line connects your closest matching verified \
+achievement to that category's actual ask (see "show your work" above). If a category has no \
+strong direct match, use the closest honest, defensible connection rather than skipping it \
+outright — e.g. documentation and playbook-building work is legitimate evidence for a "training" \
+category even if the original bullet wasn't literally about training employees. Never fabricate \
+a connection that isn't defensible, but look hard before deciding one doesn't exist. Each line \
+starts with "- ", is one line, no sub-clauses, and stays under about 30 words.
 5. Close — ONE sentence: a value statement plus an open door (offer to share more), not a repeat \
 of what you just said.""",
     "compressed": """Structure, in this order — this is the shortest of the three formats, HARD \
-CAP 160 words total, no padding. Length discipline is the entire point of this format:
+CAP 160 words total, no padding. Length discipline is the entire point of this format, which \
+means it does NOT attempt full category coverage — that's what Traditional and Warm are for:
 1. Opening — the shared opener below.
 2. ONE dense paragraph, prose only — NO bullet list anywhere in this version, and only ONE \
-concrete example, not two. Fold your single strongest quantified win directly into a sentence \
-that also says why it matters for this role (see "show your work" below). Do not add a second \
-anecdote, even a short one — that's what breaks the word cap.
+concrete example, not two. Ground that one example in whichever JD category got the most space \
+or detail in the posting — the one a skimmed reading proves you actually noticed. Fold your \
+single strongest quantified win directly into a sentence that also says why it matters for that \
+category (see "show your work" above). Do not add a second anecdote, even a short one — that's \
+what breaks the word cap.
 3. ONE more sentence — one additional concrete strength or credibility marker, still prose, not \
 its own multi-sentence paragraph.
 4. Close — ONE sentence, forward-looking, and name how you can be reached even though it's \
@@ -61,12 +68,13 @@ already in the header — that inline contact line is what makes the shortest le
 direct note rather than a formatted document.
 If a draft would run over 160 words, cut the credibility-marker sentence (step 3) before cutting \
 anything else.""",
-    "warm": """Structure, in this order — target 150-200 words total:
+    "warm": """Structure, in this order — target 180-240 words total:
 1. Opening — the shared opener below.
-2. Transition sentence, then 2-3 lines, each connecting one concrete, quantified achievement to \
-why it specifically matters for this role (see "show your work" below). Prefer achievements that \
-carry a hard number when relevance is close. Each line starts with "- " and is one line, no \
-sub-clauses.
+2. Transition sentence, then ONE line per JD category identified above, in the JD's own order — \
+not a free pick of your best wins. Each line connects your closest matching verified achievement \
+to that category's actual ask (see "show your work" above). If a category has no strong direct \
+match, use the closest honest, defensible connection rather than skipping it outright. Each line \
+starts with "- ", is one line, no sub-clauses, and stays under about 30 words.
 3. Close — ONE to two sentences: confident and forward-looking, naming a concrete next step \
 you'll personally take (e.g. following up by a specific point in time) rather than a vague \
 "looking forward to hearing from you".""",
@@ -79,9 +87,9 @@ STYLE_LABELS = {
 }
 
 STYLE_DESCRIPTIONS = {
-    "traditional": "Company-research beat + full bullet list. Most formal, most complete.",
-    "compressed": "Prose only, no bullets. Shortest and most direct — reads like a note.",
-    "warm": "Bullets + a concrete follow-up commitment. Confident, forward-looking close.",
+    "traditional": "Company-research beat + one line per JD category. Most formal, most complete.",
+    "compressed": "Prose only, no bullets, one category only. Shortest — reads like a note.",
+    "warm": "One line per JD category + a concrete follow-up commitment.",
 }
 
 STYLES = tuple(STYLE_STRUCTURES)
@@ -97,12 +105,21 @@ Opening line, every style, no exceptions: "I'm excited to apply for the [Role] a
 candidate wants, every time, not just as a fallback). No "ideal candidate," no restating what \
 the role does back to the reader.
 
-Show your work. Don't just list what you did — say why it specifically matters for THIS role. A \
-fact alone ("built a finance system") is resume content; a fact plus its relevance ("built a \
-finance system from scratch, which is the same kind of ground-up build this role needs for \
-standing up agent governance across Sales and Finance") is what a cover letter adds that a \
-resume can't. Every achievement you cite must connect explicitly to something the posting \
-actually asks for — pull the connection from the JD's own language, and don't assume the reader \
+Find the JD's own top-level categories before writing anything. If it has literal section \
+headers (e.g. "AI Adoption & Training" / "Business Process Analysis" / "Agent Strategy & \
+Design" / "Adoption Measurement"), those ARE the categories, in that exact order — use the JD's \
+own words for them, don't paraphrase or merge them. If it's a flat list with no headers, group \
+the stated responsibilities into 3-5 clear thematic clusters yourself. This matters: postings in \
+this space are very often structured exactly this way, and a letter that quietly cherry-picks \
+2-3 easy wins while ignoring a named section reads as not having read past the first paragraph — \
+the candidate has said this explicitly and it applies to every posting, not just this one.
+
+Show your work. Don't just list what you did — say why it specifically matters for THIS role, \
+and for the category it's answering. A fact alone ("built a finance system") is resume content; \
+a fact plus its relevance ("built a finance system from scratch, which is the same kind of \
+ground-up build this role's Business Process Analysis work needs") is what a cover letter adds \
+that a resume can't. Every achievement you cite must connect explicitly to the category it's \
+standing in for — pull the connection from the JD's own language, and don't assume the reader \
 will draw the line themselves. Draw it for them, in the same sentence or line.
 
 State each achievement in your own words, in a natural, conversational register — never a copy \
