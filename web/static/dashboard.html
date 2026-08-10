@@ -760,9 +760,9 @@ async function renderDiff(id){
 }
 
 function drawOut(){
-  const a=P.filter(p=>['approved','applied'].includes(p.stage));
+  const a=P.filter(p=>p.stage==='applied');
   $('#c-out').textContent=a.length;
-  if(!a.length){$('#outWrap').innerHTML='<div class="empty">Approve something first — outreach follows an application.</div>';return}
+  if(!a.length){$('#outWrap').innerHTML='<div class="empty">Submit an application first — outreach follows a submitted application, not just a built resume.</div>';return}
   $('#outWrap').innerHTML=a.map(p=>{
     const o=p.o||{name:'',title:'',url:''};
     const q=encodeURIComponent(p.co+' '+(p.tt[0]||''));

@@ -90,15 +90,16 @@ class FakeDB:
                 continue
             matching_scores = [s for s in self.scores if s.get("posting_id") == row["id"]]
             matching_variants = [v for v in self.variants if v.get("posting_id") == row["id"]]
-            matching_outreach = [o for o in self.outreach if o.get("posting_id") == row["id"]]
-            # applications.posting_id is unique — PostgREST embeds it as a
-            # to-one object, not an array (see sightline/dashboard.py).
+            # applications.posting_id and outreach.posting_id are both
+            # unique — PostgREST embeds them as to-one objects, not arrays
+            # (see sightline/dashboard.py).
             application = next(
                 (a for a in self.applications if a.get("posting_id") == row["id"]), None
             )
+            outreach = next((o for o in self.outreach if o.get("posting_id") == row["id"]), None)
             result.append({
                 **row, "companies": {"name": "Fake Co"}, "scores": matching_scores,
-                "variants": matching_variants, "outreach": matching_outreach,
+                "variants": matching_variants, "outreach": outreach,
                 "applications": application,
             })
         return result
@@ -127,13 +128,15 @@ class FakeDB:
             if row["id"] == posting_id:
                 matching_scores = [s for s in self.scores if s.get("posting_id") == posting_id]
                 matching_variants = [v for v in self.variants if v.get("posting_id") == posting_id]
-                matching_outreach = [o for o in self.outreach if o.get("posting_id") == posting_id]
                 application = next(
                     (a for a in self.applications if a.get("posting_id") == posting_id), None
                 )
+                outreach = next(
+                    (o for o in self.outreach if o.get("posting_id") == posting_id), None
+                )
                 return {
                     **row, "companies": {"name": "Fake Co"}, "scores": matching_scores,
-                    "variants": matching_variants, "outreach": matching_outreach,
+                    "variants": matching_variants, "outreach": outreach,
                     "applications": application,
                 }
         raise LookupError(f"posting {posting_id} not found")
