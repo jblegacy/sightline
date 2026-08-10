@@ -114,6 +114,14 @@ this space are very often structured exactly this way, and a letter that quietly
 2-3 easy wins while ignoring a named section reads as not having read past the first paragraph — \
 the candidate has said this explicitly and it applies to every posting, not just this one.
 
+Hit every category without announcing it. Never label a line with the category name ("On Agent \
+Strategy and Design, I..." / "For Adoption Measurement, ..."). That reads like a worksheet, not a \
+person, and the candidate has said directly it's too on-the-nose. The category should be obvious \
+from what the line is actually about — the same way Business Process Analysis is unmistakable in \
+"I mapped a client's inventory workflow end to end before ever picking a platform" without the \
+words "business process analysis" appearing anywhere in the sentence. Weave the connection into \
+natural language exactly like that; never scaffold it with a label.
+
 Show your work. Don't just list what you did — say why it specifically matters for THIS role, \
 and for the category it's answering. A fact alone ("built a finance system") is resume content; \
 a fact plus its relevance ("built a finance system from scratch, which is the same kind of \
