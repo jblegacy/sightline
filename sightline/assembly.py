@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import io
 import math
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -44,7 +45,12 @@ CONTACT = (
 # for a job wants a file named "leadership-20260805T080412Z.docx". The
 # variant type is surfaced separately in the dashboard as a tag, not baked
 # into the filename.
-RESUME_DOWNLOAD_NAME = "James Beam - Resume.docx"
+_FILENAME_UNSAFE = re.compile(r'[/\\:*?"<>|]')
+
+
+def resume_download_name(company: str) -> str:
+    company = _FILENAME_UNSAFE.sub("", company).strip() or "Unknown"
+    return f"James Beam - Resume - {company}.docx"
 
 EDUCATION = [
     "Master of Business Administration — Concordia University Irvine, 2017",
@@ -511,7 +517,10 @@ def assemble(
             "brief_cost_usd": round(brief_cost, 5),
         },
     )
-    signed_url = db.create_signed_url(STORAGE_BUCKET, path, download_filename=RESUME_DOWNLOAD_NAME)
+    company_name = (posting.get("companies") or {}).get("name", "Unknown")
+    signed_url = db.create_signed_url(
+        STORAGE_BUCKET, path, download_filename=resume_download_name(company_name)
+    )
     return {
         **variant_row, "signed_url": signed_url, "sections": _serialize_sections(sections),
         "jd_text": posting.get("jd_text"), "jd_keywords": score.get("keywords") or [],
@@ -552,8 +561,9 @@ def variant_detail(db: SightlineDB, posting_id: int) -> dict[str, Any]:
 
     bullets = db.get_bullets_full()
     sections = select_bullets(bullets, variant_row["kind"], score.get("keywords") or [])
+    company_name = (posting.get("companies") or {}).get("name", "Unknown")
     signed_url = db.create_signed_url(
-        STORAGE_BUCKET, variant_row["storage_path"], download_filename=RESUME_DOWNLOAD_NAME
+        STORAGE_BUCKET, variant_row["storage_path"], download_filename=resume_download_name(company_name)
     )
     cover_letter_signed_url = None
     if variant_row.get("cover_letter_storage_path"):

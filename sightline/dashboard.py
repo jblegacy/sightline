@@ -17,17 +17,17 @@ from collections import Counter
 from datetime import datetime, timezone
 from typing import Any
 
-from sightline.assembly import RESUME_DOWNLOAD_NAME
+from sightline.assembly import resume_download_name
 from sightline.scoring import DIMENSIONS
 
 _VARIANT_CODE = {"engineer": "eng", "leadership": "lead"}
 _VARIANT_LABEL = {"engineer": "Engineer", "leadership": "Leadership"}
 
 
-def _variant_to_app(variant: dict[str, Any]) -> dict[str, Any]:
+def _variant_to_app(variant: dict[str, Any], company: str) -> dict[str, Any]:
     return {
         "variant": _VARIANT_LABEL.get(variant.get("kind"), variant.get("kind")),
-        "file": RESUME_DOWNLOAD_NAME if variant.get("storage_path") else None,
+        "file": resume_download_name(company) if variant.get("storage_path") else None,
         "finalFile": None,
         "coverLetterFile": (variant.get("cover_letter_storage_path") or "").split("/")[-1] or None,
         "status": "ready to submit",
@@ -37,11 +37,13 @@ def _variant_to_app(variant: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _application_to_app(application: dict[str, Any], variant: dict[str, Any] | None) -> dict[str, Any]:
+def _application_to_app(
+    application: dict[str, Any], variant: dict[str, Any] | None, company: str
+) -> dict[str, Any]:
     variant = variant or {}
     return {
         "variant": _VARIANT_LABEL.get(variant.get("kind"), variant.get("kind")) if variant else None,
-        "file": (RESUME_DOWNLOAD_NAME if variant.get("storage_path") else None) if variant else None,
+        "file": (resume_download_name(company) if variant.get("storage_path") else None) if variant else None,
         "finalFile": application.get("final_filename"),
         "coverLetterFile": (variant.get("cover_letter_storage_path") or "").split("/")[-1] or None,
         "status": application.get("status") or ("ready to submit" if variant else "deferred"),
@@ -113,10 +115,11 @@ def posting_row_to_p(row: dict[str, Any], co_count: int) -> dict[str, Any] | Non
     application = row.get("applications") or None
     variant = variants[0] if variants else None
 
+    company_name = company.get("name", "Unknown")
     if application:
-        app = _application_to_app(application, variant)
+        app = _application_to_app(application, variant, company_name)
     elif variant:
-        app = _variant_to_app(variant)
+        app = _variant_to_app(variant, company_name)
     else:
         app = None
 
