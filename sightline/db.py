@@ -4,6 +4,7 @@ so this works from anywhere, including sandboxes that block non-443 ports.
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -228,18 +229,28 @@ class SightlineDB:
         )
         resp.raise_for_status()
 
-    def create_signed_url(self, bucket: str, path: str, expires_in: int = 3600) -> str:
+    def create_signed_url(
+        self, bucket: str, path: str, expires_in: int = 3600, download_filename: str | None = None
+    ) -> str:
         """Bucket is private (see CLAUDE.md) — every download goes through a
         signed, time-limited URL, never a public one. Supabase's response
         `signedURL` is relative to /storage/v1 (e.g. "/object/sign/..."),
         not to the bare origin — found live: concatenating it onto the bare
-        origin dropped /storage/v1 and produced a 404 download link."""
+        origin dropped /storage/v1 and produced a 404 download link.
+
+        `download_filename`, when given, is appended as a `download` query
+        param — Supabase Storage honors it as the Content-Disposition
+        filename, so the object key (which carries a variant/timestamp for
+        uniqueness) can differ from what actually lands on disk."""
         resp = self._client.post(
             f"{self._storage_origin}/storage/v1/object/sign/{bucket}/{path}",
             json={"expiresIn": expires_in},
         )
         resp.raise_for_status()
-        return f"{self._storage_origin}/storage/v1{resp.json()['signedURL']}"
+        url = f"{self._storage_origin}/storage/v1{resp.json()['signedURL']}"
+        if download_filename:
+            url += f"&download={quote(download_filename)}"
+        return url
 
     def list_scored_postings(self) -> list[dict[str, Any]]:
         """Postings that survived scoring — status='scored' means total already

@@ -39,6 +39,13 @@ CONTACT = (
     "linkedin.com/in/jamesabeam  |  beamlegacy.com"
 )
 
+# What actually lands on disk when downloaded — the storage object key below
+# keeps the variant/timestamp for internal uniqueness, but nobody applying
+# for a job wants a file named "leadership-20260805T080412Z.docx". The
+# variant type is surfaced separately in the dashboard as a tag, not baked
+# into the filename.
+RESUME_DOWNLOAD_NAME = "James Beam - Resume.docx"
+
 EDUCATION = [
     "Master of Business Administration — Concordia University Irvine, 2017",
     "Bachelor of Science, Business Administration (Entrepreneurship) — Chapman University, 2011",
@@ -504,7 +511,7 @@ def assemble(
             "brief_cost_usd": round(brief_cost, 5),
         },
     )
-    signed_url = db.create_signed_url(STORAGE_BUCKET, path)
+    signed_url = db.create_signed_url(STORAGE_BUCKET, path, download_filename=RESUME_DOWNLOAD_NAME)
     return {
         **variant_row, "signed_url": signed_url, "sections": _serialize_sections(sections),
         "jd_text": posting.get("jd_text"), "jd_keywords": score.get("keywords") or [],
@@ -545,7 +552,9 @@ def variant_detail(db: SightlineDB, posting_id: int) -> dict[str, Any]:
 
     bullets = db.get_bullets_full()
     sections = select_bullets(bullets, variant_row["kind"], score.get("keywords") or [])
-    signed_url = db.create_signed_url(STORAGE_BUCKET, variant_row["storage_path"])
+    signed_url = db.create_signed_url(
+        STORAGE_BUCKET, variant_row["storage_path"], download_filename=RESUME_DOWNLOAD_NAME
+    )
     cover_letter_signed_url = None
     if variant_row.get("cover_letter_storage_path"):
         cover_letter_signed_url = db.create_signed_url(STORAGE_BUCKET, variant_row["cover_letter_storage_path"])
