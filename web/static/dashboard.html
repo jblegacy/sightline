@@ -639,6 +639,12 @@ function rowHTML(p){
 }
 
 let QF='all';
+const isAiTitle=ti=>/\bA\.?I\.?\b/i.test(ti||'');
+
+function sectionHead(label,count,hint){
+  return `<div class="seclabel"><h3>${esc(label)} <span class="ct">${count}</span></h3>${hint?`<p>${esc(hint)}</p>`:''}</div>`;
+}
+
 function drawQueue(){
   let q=P.filter(p=>p.stage==='queue');
   q=q.filter(p=>{
@@ -657,7 +663,13 @@ function drawQueue(){
            below:p=>['under','low'].includes(compTier(p).k)}[QF];
   const shown=f?q.filter(f):q;
   shown.sort((a,b)=>b.score-a.score);
-  $('#queueRows').innerHTML=shown.length?shown.map(rowHTML).join(''):'<div class="empty">Nothing matches this filter.</div>';
+
+  const aiRoles=shown.filter(p=>isAiTitle(p.ti));
+  const otherRoles=shown.filter(p=>!isAiTitle(p.ti));
+  let html='';
+  if(aiRoles.length)html+=sectionHead('AI Roles',aiRoles.length,'Title contains "AI" — surfaced first.')+aiRoles.map(rowHTML).join('');
+  if(otherRoles.length)html+=sectionHead('Other Roles',otherRoles.length)+otherRoles.map(rowHTML).join('');
+  $('#queueRows').innerHTML=html||'<div class="empty">Nothing matches this filter.</div>';
   $('#c-queue').textContent=q.length;
   $('#qfilters .ct').textContent=q.length;
   drawWatch();
