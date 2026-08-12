@@ -314,6 +314,34 @@ def test_api_search_profile_patch_unknown_profile_404s(client):
     assert resp.status_code == 404
 
 
+def test_api_search_profile_pause_requires_auth(raw_client):
+    resp = raw_client.post("/api/search-profiles/cpg/pause", json={"paused": True})
+    assert resp.status_code == 401
+
+
+def test_api_search_profile_pause_stops_daily_ingestion(client):
+    resp = client.post(
+        "/api/search-profiles/cpg/pause", json={"paused": True}, auth=(DASH_USER, DASH_PASS)
+    )
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True, "profile_id": "cpg", "paused": True}
+
+
+def test_api_search_profile_pause_resumes(client):
+    resp = client.post(
+        "/api/search-profiles/automation/pause", json={"paused": False}, auth=(DASH_USER, DASH_PASS)
+    )
+    assert resp.status_code == 200
+    assert resp.json()["paused"] is False
+
+
+def test_api_settings_includes_paused_state_per_profile(client):
+    resp = client.get("/api/settings", auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 200
+    profiles = resp.json()["profiles"]
+    assert all("paused" in p for p in profiles)
+
+
 def test_api_preview_requires_auth(raw_client):
     resp = raw_client.post("/api/preview", json={})
     assert resp.status_code == 401

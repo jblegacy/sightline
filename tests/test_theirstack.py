@@ -189,6 +189,41 @@ def test_upsert_saved_search_patches_when_existing():
 
 
 @respx.mock
+def test_upsert_saved_search_create_sets_alert_active():
+    respx.get(f"{BASE}/v0/saved_searches").mock(return_value=httpx.Response(200, json=[]))
+    create = respx.post(f"{BASE}/v0/saved_searches").mock(
+        return_value=httpx.Response(201, json={"id": 42, "name": "sightline"})
+    )
+    client = TheirStackClient(api_key="fake")
+    client.upsert_saved_search("sightline", {"posted_at_max_age_days": 30})
+    import json as _json
+
+    body = _json.loads(create.calls.last.request.content)
+    assert body["is_alert_active"] is True
+
+
+@respx.mock
+def test_upsert_saved_search_update_does_not_force_alert_active():
+    # Found live: this used to hardcode is_alert_active=True on every PATCH,
+    # so an unrelated title/scope edit silently undid a deliberate pause —
+    # the circuit breaker (or a manual pause) would disable the search, then
+    # the next settings save would quietly turn it back on. An update must
+    # leave whatever pause state is already set alone.
+    respx.get(f"{BASE}/v0/saved_searches").mock(
+        return_value=httpx.Response(200, json=[{"id": 42, "name": "sightline", "is_alert_active": False}])
+    )
+    patch = respx.patch(f"{BASE}/v0/saved_searches/42").mock(
+        return_value=httpx.Response(200, json={"id": 42, "name": "sightline"})
+    )
+    client = TheirStackClient(api_key="fake")
+    client.upsert_saved_search("sightline", {"posted_at_max_age_days": 30})
+    import json as _json
+
+    body = _json.loads(patch.calls.last.request.content)
+    assert "is_alert_active" not in body
+
+
+@respx.mock
 def test_upsert_webhook_creates_with_signing_secret():
     respx.get(f"{BASE}/v0/webhooks").mock(return_value=httpx.Response(200, json=[]))
     create = respx.post(f"{BASE}/v0/webhooks").mock(
