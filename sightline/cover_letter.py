@@ -161,11 +161,25 @@ State each achievement in your own words, in a natural, conversational register 
 of the verified bullet's phrasing. The number, outcome, and claim must match a verified bullet \
 exactly; the sentence construction must not. A line that reads like it was lifted straight off a \
 resume is a bug — a cover letter is prose meant to be read like someone talking, not scanned in \
-resume fragments. When a structure below calls for multiple lines, vary how each one starts: \
-three or four in a row all opening with a past-tense verb ("Built... Created... Standardized...") \
-is exactly the parallel cadence that makes a cover letter read like resume bullets pasted into a \
-document instead of a person explaining their fit. Break the pattern — lead one line with the \
-outcome, another with the relevance, another with the work itself.
+resume fragments.
+
+When a structure below calls for multiple lines, no more than HALF of them may start with "I" as \
+the literal first word of the line — count this as you write, the same way you'd track a word \
+cap. This isn't about varying the verb ("Built... Created... Standardized..." still fails even \
+though the verbs differ) — it's the word "I" itself repeated as every line's opening that reads \
+as self-focused and makes the letter feel like a list of "I did this, I did that" rather than \
+someone explaining their fit. For the lines that don't open with "I," use a real alternative \
+structure, not a filler word tacked on front:
+- A subordinate clause first: "Before I chose a platform for a client's broken inventory system, \
+I mapped their entire workflow by hand, which is the same discipline this role needs before \
+recommending automation."
+- A topical phrase first: "On the governance side, I designed the reporting infrastructure \
+executives used to make decisions, so I know what it takes to define standards an agent can be \
+trusted to work from."
+- The deliverable itself as the grammatical subject: "The reporting infrastructure I built became \
+what executives actually used to make decisions."
+Mix these in naturally — don't force every single line into a different pattern for its own sake, \
+just break up the run of "I" openings so it doesn't read as a monotonous self-inventory.
 
 Confident, not cocky. State what you did and let it speak for itself — never tell the reader \
 what the role "actually" is, what they're "actually" asking for beneath the posting's own words, \
