@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Any
 
 from sightline.ingest import classify_search_profile, handle_webhook_event, job_to_posting
@@ -72,10 +73,21 @@ class FakeDB:
             self.postings[external_id]["status"] = "expired"
             self.postings[external_id]["closed_at"] = closed_at
 
+    def archive_posting_by_id(self, posting_id: int, reason: str) -> None:
+        for row in self.postings.values():
+            if row["id"] == posting_id:
+                row["status"] = "expired"
+                row["filter_reason"] = reason
+
     def log_event(self, entity_type, event, entity_id=None, payload=None) -> None:
-        self.events.append(
-            {"entity_type": entity_type, "event": event, "entity_id": entity_id, "payload": payload}
-        )
+        self.events.append({
+            "entity_type": entity_type, "event": event, "entity_id": entity_id, "payload": payload,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+
+    def get_latest_event(self, events: list[str]) -> dict[str, Any] | None:
+        matching = [e for e in self.events if e["event"] in events]
+        return matching[-1] if matching else None
 
     def get_settings(self) -> dict[str, Any]:
         return self._settings

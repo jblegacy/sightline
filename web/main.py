@@ -18,7 +18,7 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sightline.answers import chat_reply, next_ref
 from sightline.anthropic_client import AnthropicClient
 from sightline.assembly import assemble, variant_detail
-from sightline.budget import used_today
+from sightline.budget import maybe_reset_daily_breaker, used_today
 from sightline.config import Settings, get_settings
 from sightline.cover_letter import (
     STYLE_DESCRIPTIONS,
@@ -168,6 +168,10 @@ def api_preview(
 def api_credits(
     db: SightlineDB = Depends(get_db), theirstack: TheirStackClient = Depends(get_theirstack)
 ) -> dict:
+    # Lazy daily-breaker reset — see sightline/budget.py. No scheduled
+    # worker exists to fire this on a clock, so it piggybacks on the one
+    # endpoint every dashboard load already hits.
+    reset = maybe_reset_daily_breaker(theirstack, db)
     settings = db.get_settings()
     balance = theirstack.credit_balance()
     return {
@@ -176,6 +180,7 @@ def api_credits(
         "monthly_credits": settings.get("monthly_credits", 200),
         "daily_credit_cap": settings.get("daily_credit_cap"),
         "used_today": used_today(theirstack, db, settings),
+        "daily_breaker_reset": reset["reset"],
     }
 
 
@@ -392,6 +397,18 @@ def api_application_patch(
             payload={"reason": fields.get("notes")},
         )
     return updated
+
+
+@app.post("/api/postings/{posting_id}/archive", dependencies=[Depends(require_auth)])
+def api_archive_posting(posting_id: int, db: SightlineDB = Depends(get_db)) -> dict:
+    """Manual, credit-free alternative to waiting for TheirStack's
+    job.closed webhook (which costs 1 credit same as job.new) — a plain
+    judgment-call button, not an auto-dead-listing detector. Same effect
+    as a real closure: status='expired', drops out of every queue/
+    watchlist view, data kept, not deleted."""
+    db.archive_posting_by_id(posting_id, reason="archived by user")
+    db.log_event(entity_type="posting", entity_id=posting_id, event="archived_by_user")
+    return {"ok": True}
 
 
 @app.patch("/api/postings/{posting_id}/score-override", dependencies=[Depends(require_auth)])

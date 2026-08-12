@@ -1,7 +1,13 @@
 import datetime as _dt
 from unittest.mock import MagicMock
 
-from sightline.budget import check_and_enforce_budget, check_and_enforce_daily_cap, saved_search_name, used_today
+from sightline.budget import (
+    check_and_enforce_budget,
+    check_and_enforce_daily_cap,
+    maybe_reset_daily_breaker,
+    saved_search_name,
+    used_today,
+)
 
 TODAY = _dt.datetime.now(_dt.timezone.utc).date().isoformat()
 YESTERDAY = (_dt.datetime.now(_dt.timezone.utc).date() - _dt.timedelta(days=1)).isoformat()
@@ -166,3 +172,68 @@ def test_daily_cap_first_check_of_the_day_never_trips_even_if_high():
     result = check_and_enforce_daily_cap(ts, db, 100, settings)
     assert result["tripped"] is False
     assert result["used_today"] == 0
+
+
+# ---- maybe_reset_daily_breaker ----
+
+
+def test_reset_noop_when_nothing_ever_tripped():
+    ts = make_theirstack(used_api_credits=0, active=True)
+    db = MagicMock()
+    db.get_latest_event.return_value = None
+    result = maybe_reset_daily_breaker(ts, db)
+    assert result["reset"] is False
+    ts.set_saved_search_active.assert_not_called()
+
+
+def test_reset_noop_when_monthly_breaker_is_the_latest_trip():
+    ts = make_theirstack(used_api_credits=0, active=False)
+    db = MagicMock()
+    db.get_latest_event.return_value = {
+        "event": "circuit_breaker_tripped", "created_at": f"{YESTERDAY}T12:00:00+00:00",
+    }
+    result = maybe_reset_daily_breaker(ts, db)
+    assert result["reset"] is False
+    assert "daily throttle" in result["reason"]
+    ts.set_saved_search_active.assert_not_called()
+    db.log_event.assert_not_called()
+
+
+def test_reset_noop_when_daily_cap_tripped_earlier_today():
+    ts = make_theirstack(used_api_credits=0, active=False)
+    db = MagicMock()
+    db.get_latest_event.return_value = {
+        "event": "daily_cap_tripped", "created_at": f"{TODAY}T01:00:00+00:00",
+    }
+    result = maybe_reset_daily_breaker(ts, db)
+    assert result["reset"] is False
+    assert "same UTC day" in result["reason"]
+    ts.set_saved_search_active.assert_not_called()
+
+
+def test_reset_re_enables_when_daily_cap_tripped_a_prior_day():
+    ts = make_theirstack(used_api_credits=0, active=False)
+    db = MagicMock()
+    db.get_latest_event.return_value = {
+        "event": "daily_cap_tripped", "created_at": f"{YESTERDAY}T23:03:00+00:00",
+    }
+    result = maybe_reset_daily_breaker(ts, db)
+    assert result["reset"] is True
+    assert ts.set_saved_search_active.call_count == 2
+    assert ts.set_webhook_active.call_count == 2
+    ts.set_saved_search_active.assert_any_call(101, True)
+    ts.set_webhook_active.assert_any_call(201, True)
+    db.log_event.assert_called_once()
+    assert db.log_event.call_args.kwargs["event"] == "daily_cap_reset"
+
+
+def test_reset_already_enabled_is_not_toggled_again():
+    ts = make_theirstack(used_api_credits=0, active=True)
+    db = MagicMock()
+    db.get_latest_event.return_value = {
+        "event": "daily_cap_tripped", "created_at": f"{YESTERDAY}T23:03:00+00:00",
+    }
+    result = maybe_reset_daily_breaker(ts, db)
+    assert result["reset"] is True
+    ts.set_saved_search_active.assert_not_called()
+    ts.set_webhook_active.assert_not_called()
