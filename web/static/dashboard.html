@@ -585,7 +585,7 @@ function rowHTML(p){
   return `<div class="row" data-id="${p.id}">
     ${badge(p)}
     <div class="rowmain">
-      <p class="rtitle">${esc(p.co)} — ${esc(p.ti)}${p.url?` <a href="${esc(p.url)}" target="_blank" rel="noopener" class="srclink" onclick="event.stopPropagation()">View posting ↗</a>`:''} <a href="#" class="srclink" data-archive="${p.id}" onclick="event.stopPropagation()">Archive</a></p>
+      <p class="rtitle">${esc(p.co)} — ${esc(p.ti)}${p.url?` <a href="${esc(p.url)}" target="_blank" rel="noopener" class="srclink" onclick="event.stopPropagation()">View posting ↗</a>`:''} <a href="#" class="srclink" data-archive="${p.id}">Archive</a></p>
       <div class="badges">
         <span class="cb ${ct.k}">${esc(ct.t)}</span>
         ${p.ko.length?`<span class="ko">${p.ko.length} knockout${p.ko.length>1?'s':''}</span>`:'<span class="clean">clean</span>'}
