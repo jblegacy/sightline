@@ -88,6 +88,33 @@ def test_webhook_accepts_valid_signature_and_ingests(client, fake_db):
     assert "999001" in fake_db.postings
 
 
+def test_webhook_processing_runs_off_the_event_loop(client, monkeypatch):
+    """handle_webhook_event is fully synchronous — SightlineDB and
+    AnthropicClient both use a blocking httpx.Client, and job.new scoring
+    alone can take several seconds. theirstack_webhook is the only async
+    route in the app; calling that directly would freeze the event loop for
+    every other request (found live: /health with zero dependencies stalled
+    during scoring). This verifies it's dispatched through run_in_threadpool
+    rather than called inline."""
+    import web.main as main_module
+
+    real_run_in_threadpool = main_module.run_in_threadpool
+    calls = []
+
+    async def spy(func, *args, **kwargs):
+        calls.append(func)
+        return await real_run_in_threadpool(func, *args, **kwargs)
+
+    monkeypatch.setattr(main_module, "run_in_threadpool", spy)
+
+    body = json.dumps({"id": 1, "type": "job.new", "payload": SAMPLE_JOB}).encode()
+    resp = client.post(
+        "/webhooks/theirstack", content=body, headers={"X-TheirStack-Signature-256": sign(body)}
+    )
+    assert resp.status_code == 200
+    assert calls == [main_module.handle_webhook_event]
+
+
 def test_webhook_signature_checked_against_raw_bytes_not_reparsed_json(client):
     # signature computed over a body with different whitespace than what's sent
     # must fail — verifies we check request.body(), not a re-serialized dict

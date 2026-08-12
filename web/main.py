@@ -13,6 +13,7 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from starlette.concurrency import run_in_threadpool
 
 from sightline.answers import chat_reply, next_ref
 from sightline.anthropic_client import AnthropicClient
@@ -629,8 +630,22 @@ async def theirstack_webhook(
     # Handle at least 2 concurrent requests, return 2xx promptly, and treat
     # duplicate deliveries as harmless (upsert-on-external_id is idempotent) —
     # all per docs/THEIRSTACK_API_REFERENCE.md §8's delivery requirements.
+    #
+    # This is the only async route in the app, and handle_webhook_event is
+    # fully synchronous (SightlineDB/AnthropicClient both use blocking
+    # httpx.Client) — a job.new event's scoring call alone can run several
+    # seconds. Called directly, that blocks this process's single asyncio
+    # event loop for the whole app, not just this request: found live —
+    # every other route, including /health with zero dependencies, stalled
+    # or timed out during scoring, and TheirStack's own webhook client gave
+    # up mid-delivery (ClientDisconnect on request.body()) waiting for the
+    # loop to free up enough to even read the next request. run_in_threadpool
+    # moves the blocking work off the event loop, matching what every other
+    # route already gets for free by being a plain `def` (FastAPI dispatches
+    # those to a worker thread automatically; this one can't be sync because
+    # it needs `await request.body()`).
     try:
-        result = handle_webhook_event(db, anthropic, theirstack, event)
+        result = await run_in_threadpool(handle_webhook_event, db, anthropic, theirstack, event)
     except Exception:
         logger.exception(
             "failed to process webhook event id=%s type=%s", event.get("id"), event.get("type")
