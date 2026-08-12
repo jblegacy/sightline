@@ -126,9 +126,16 @@ def _filter_and_score(
     then scoring, then the queue_min_score cutoff. The row is already
     inserted and its 'ingested' event already logged by the caller — this
     only owns what happens after a posting exists."""
+    # update_posting() is a fire-and-forget PATCH (no return=representation) —
+    # found live: the function's return value still said status='new' after
+    # a real posting had already been scored and archived in the database,
+    # because nothing here ever fed the update back into the local dict.
+    # Merge each update in so the caller (e.g. the manual-add API response)
+    # reflects the real final state, not the pre-update snapshot.
     filter_status, filter_reason = apply_filter(posting, settings.get("red_flag_phrases") or [])
     if filter_status == "archived":
         db.update_posting(posting["id"], {"status": "archived", "filter_reason": filter_reason})
+        posting = {**posting, "status": "archived", "filter_reason": filter_reason}
         db.log_event(
             entity_type="posting", event="filtered_archived", entity_id=posting["id"],
             payload={"reason": filter_reason},
@@ -136,6 +143,7 @@ def _filter_and_score(
         return posting
 
     db.update_posting(posting["id"], {"status": "filtered"})
+    posting = {**posting, "status": "filtered"}
 
     bullets = db.get_bullets()
     score_row = score_posting(anthropic, posting, bullets)
@@ -148,12 +156,12 @@ def _filter_and_score(
 
     min_score = settings.get("queue_min_score", 55)
     if score_row["total"] < min_score:
-        db.update_posting(
-            posting["id"],
-            {"status": "archived", "filter_reason": f"score {score_row['total']} below queue_min_score {min_score}"},
-        )
+        reason = f"score {score_row['total']} below queue_min_score {min_score}"
+        db.update_posting(posting["id"], {"status": "archived", "filter_reason": reason})
+        posting = {**posting, "status": "archived", "filter_reason": reason}
     else:
         db.update_posting(posting["id"], {"status": "scored"})
+        posting = {**posting, "status": "scored"}
 
     return posting
 

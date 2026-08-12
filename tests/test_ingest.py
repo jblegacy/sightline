@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from typing import Any
+from unittest.mock import MagicMock
 
 from sightline.ingest import (
     classify_search_profile,
@@ -500,6 +501,25 @@ def test_handle_manual_add_requires_title_url_and_jd_text():
         assert False, "expected ValueError"
     except ValueError as e:
         assert "required" in str(e)
+
+
+def test_filter_and_score_return_value_reflects_final_status_not_stale_snapshot():
+    # Regression: update_posting() is a fire-and-forget PATCH in the real
+    # SightlineDB (no return=representation, never mutates its input dict) -
+    # FakeDB's update_posting happens to mutate the same dict object in
+    # place, which silently hid this. A MagicMock matches real behavior:
+    # update_posting returns None and never touches the dict
+    # handle_manual_add is holding, so this would have failed before the fix.
+    db = MagicMock()
+    db.upsert_company.return_value = 1
+    db.get_search_profiles.return_value = []
+    db.upsert_posting.return_value = {"id": 42, "status": "new", "title": MANUAL_FIELDS["title"]}
+    db.update_posting.return_value = None
+    db.get_bullets.return_value = []
+    db.insert_score.return_value = {"id": 1}
+
+    posting = handle_manual_add(db, FakeAnthropic(), {}, [], MANUAL_FIELDS)
+    assert posting["status"] == "scored"
 
 
 def test_handle_manual_add_ingests_scores_and_costs_zero_credits():
