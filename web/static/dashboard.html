@@ -54,6 +54,8 @@ h2{font-family:var(--display);font-weight:600;font-size:1.1rem;margin:0 0 3px;le
 .row:first-of-type{border-top-width:1px}
 .row.open{background:var(--panel2)}
 .rowmain{min-width:0}
+.rowacts{display:flex;flex-direction:column;gap:6px;min-width:104px}
+.rowacts .btn{width:100%;text-align:center}
 .rtitle{font-weight:600;font-size:14.5px;margin:0 0 2px}
 .srclink{font-weight:400;font-size:12px;color:var(--muted);text-decoration:none}
 .srclink:hover{color:var(--done);text-decoration:underline}
@@ -375,6 +377,11 @@ table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       </div>
       <button class="btn go" id="saveProfileShare" style="margin-top:6px">Save share</button>
       <div class="note">Enter as a percent (e.g. "80" or "80%"). Only this profile's share is saved — if you're rebalancing between profiles, update both so they still add to 100%.</div>
+      <div class="row2" style="margin-top:14px;align-items:center">
+        <div class="fld"><label>Daily ingestion</label><span id="pPauseStatus" class="pill unsent">loading…</span></div>
+        <button class="btn ghost" id="toggleProfilePause" style="margin-top:18px">Pause this profile</button>
+      </div>
+      <div class="note">Stops (or resumes) this profile's saved search and webhook on TheirStack directly — no new postings come in for it while paused, and nothing already queued gets lost.</div>
     </div>
 
     <div class="seclabel"><h3>Fetch criteria</h3><span class="cost paid">COSTS CREDITS</span>
@@ -595,7 +602,7 @@ function rowHTML(p){
   return `<div class="row" data-id="${p.id}">
     ${badge(p)}
     <div class="rowmain">
-      <p class="rtitle">${esc(p.co)} — ${esc(p.ti)}${p.url?` <a href="${esc(p.url)}" target="_blank" rel="noopener" class="srclink" onclick="event.stopPropagation()">View posting ↗</a>`:''} <a href="#" class="srclink" data-archive="${p.id}">Archive</a></p>
+      <p class="rtitle">${esc(p.co)} — ${esc(p.ti)}${p.url?` <a href="${esc(p.url)}" target="_blank" rel="noopener" class="srclink" onclick="event.stopPropagation()">View posting ↗</a>`:''}</p>
       <div class="badges">
         <span class="cb ${ct.k}">${esc(ct.t)}</span>
         ${p.ko.length?`<span class="ko">${p.ko.length} knockout${p.ko.length>1?'s':''}</span>`:'<span class="clean">clean</span>'}
@@ -605,7 +612,12 @@ function rowHTML(p){
       <div class="rmeta"><span>${esc(p.loc)}</span><span>seen ${esc(p.age)} ago</span></div>
       <p class="rrat">${esc(p.rat)}</p>
     </div>
-    <div class="rowacts"><button class="btn sm ghost tog">Details</button></div>
+    <div class="rowacts">
+      <button class="btn sm ghost tog">Details</button>
+      ${p.stage==='queue'||p.stage==='watch'?`<button class="btn sm go" data-act="approve">Approve</button>
+      <button class="btn sm ghost" data-act="reject">Reject</button>`:''}
+      <button class="btn sm ghost" data-archive="${p.id}">Archive</button>
+    </div>
     <div class="detail">
       <div>
         <section><h4>Keywords to mirror</h4><div class="chips">${p.kw.map(k=>`<span class="chip">${esc(k)}</span>`).join('')}</div></section>
@@ -1476,9 +1488,18 @@ function setActiveProfile(id){
   CFG=PROFILES.find(p=>p.id===id)||{inc:[],exc:[]};
   $('#pVar').value=CFG.variant==='leadership'?'Operations Leadership':'Workflow Automation';
   $('#pShare').value=CFG.budgetShare!=null?Math.round(CFG.budgetShare*100)+'%':'';
+  drawPauseStatus();
   drawProfileChips();
   drawTags();
   $('#prevOut').style.display='none';
+}
+
+function drawPauseStatus(){
+  const el=$('#pPauseStatus'), btn=$('#toggleProfilePause');
+  if(CFG.paused==null){el.textContent='no saved search yet';el.className='pill unsent';btn.disabled=true;return}
+  btn.disabled=false;
+  if(CFG.paused){el.textContent='paused — nothing coming in';el.className='pill rejected';btn.textContent='Resume this profile'}
+  else{el.textContent='active';el.className='pill submitted';btn.textContent='Pause this profile'}
 }
 
 function currentScopeFields(){
@@ -1579,6 +1600,22 @@ document.addEventListener('click',e=>{
     if(!raw||!Number.isFinite(pct)||pct<0||pct>100){toast('Enter a percent between 0 and 100');return}
     patchSearchProfile(ACTIVE,{budget_share:pct/100})
       .then(ok=>{if(ok){$('#pShare').value=Math.round(ok.budgetShare*100)+'%';toast('Share saved')}});
+    return}
+  if(e.target.id==='toggleProfilePause'){
+    const nextPaused=!CFG.paused;
+    if(nextPaused&&!confirm(`Pause ${CFG.label}? No new postings will come in for this profile until you resume it.`))return;
+    e.target.disabled=true;
+    (async()=>{
+      try{
+        const resp=await fetch(`/api/search-profiles/${ACTIVE}/pause`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({paused:nextPaused})});
+        if(!resp.ok){const err=await resp.json().catch(()=>({detail:'failed'}));toast(`Failed: ${err.detail||resp.status}`);e.target.disabled=false;return}
+        CFG.paused=nextPaused;
+        const i=PROFILES.findIndex(p=>p.id===ACTIVE); if(i>=0)PROFILES[i].paused=nextPaused;
+        drawPauseStatus();
+        toast(nextPaused?'Paused — no new postings for this profile':'Resumed');
+      }catch(err){toast('Failed — see console');console.error('toggle pause failed:',err);}
+      e.target.disabled=false;
+    })();
     return}
   if(e.target.id==='saveFetchCriteria'){
     patchSettings(currentScopeFields()).then(ok=>{if(ok)toast('Scope saved \u2014 synced to both profiles')});

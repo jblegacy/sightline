@@ -5,7 +5,9 @@ from sightline.budget import (
     check_and_enforce_budget,
     check_and_enforce_daily_cap,
     maybe_reset_daily_breaker,
+    profile_paused,
     saved_search_name,
+    set_profile_paused,
     used_today,
 )
 
@@ -69,6 +71,58 @@ def test_missing_saved_search_or_webhook_does_not_raise():
     db = MagicMock()
     result = check_and_enforce_budget(ts, db, monthly_credit_budget=200)
     assert result["tripped"] is True
+
+
+# ---- set_profile_paused / profile_paused: per-profile, not both at once ----
+
+
+def test_set_profile_paused_only_touches_the_one_profile():
+    ts = make_theirstack(used_api_credits=0, active=True)
+    assert set_profile_paused(ts, "cpg", True) is True
+    ts.set_saved_search_active.assert_called_once_with(102, False)
+    ts.set_webhook_active.assert_called_once_with(202, False)
+
+
+def test_set_profile_paused_already_paused_is_not_paused_again():
+    ts = make_theirstack(used_api_credits=0, active=False)
+    set_profile_paused(ts, "automation", True)
+    ts.set_saved_search_active.assert_not_called()
+    ts.set_webhook_active.assert_not_called()
+
+
+def test_set_profile_paused_resume():
+    ts = make_theirstack(used_api_credits=0, active=False)
+    assert set_profile_paused(ts, "automation", False) is True
+    ts.set_saved_search_active.assert_called_once_with(101, True)
+    ts.set_webhook_active.assert_called_once_with(201, True)
+
+
+def test_set_profile_paused_missing_search_returns_false():
+    ts = make_theirstack(used_api_credits=0, missing=True)
+    assert set_profile_paused(ts, "cpg", True) is False
+    ts.set_saved_search_active.assert_not_called()
+
+
+def test_profile_paused_reads_current_state():
+    ts = make_theirstack(used_api_credits=0, active=True)
+    assert profile_paused(ts, "automation") is False
+    ts2 = make_theirstack(used_api_credits=0, active=False)
+    assert profile_paused(ts2, "cpg") is True
+
+
+def test_profile_paused_missing_search_returns_none():
+    ts = make_theirstack(used_api_credits=0, missing=True)
+    assert profile_paused(ts, "automation") is None
+
+
+def test_profile_paused_theirstack_failure_returns_none_not_raise():
+    # Found live: a 429 from TheirStack propagated straight through and
+    # crashed /api/settings entirely — this is a status pill riding along on
+    # a route loaded on every page view, it must degrade, not take the
+    # dashboard down.
+    ts = MagicMock()
+    ts.find_saved_search.side_effect = RuntimeError("429 Too Many Requests")
+    assert profile_paused(ts, "automation") is None
 
 
 # ---- used_today: anchored to TheirStack's real balance, not our own log ----

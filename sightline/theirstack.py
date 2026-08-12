@@ -145,13 +145,22 @@ class TheirStackClient:
     def upsert_saved_search(self, name: str, filters: dict[str, Any]) -> dict[str, Any]:
         """Field names (`body`, `type`) verified against the live OpenAPI spec
         (SavedSearchCreate/SavedSearchUpdate) — the API doesn't use `filters`/
-        `search_type` despite those being the more obvious guesses."""
+        `search_type` despite those being the more obvious guesses.
+
+        `is_alert_active` is only set on create, never on an update to an
+        existing search. Found live: it used to be forced to True on every
+        call, including title/scope edits that have nothing to do with
+        pause state — which meant a circuit-breaker or manual pause got
+        silently undone by the next unrelated settings save, letting
+        ingestion resume with nothing having deliberately re-enabled it.
+        Omitting the field on update leaves whatever's already set alone."""
         _require_dedup_filter(filters)
         existing = self.find_saved_search(name)
-        body = {"name": name, "type": "jobs", "body": filters, "is_alert_active": True}
         if existing:
+            body = {"name": name, "type": "jobs", "body": filters}
             resp = self._client.patch(f"/v0/saved_searches/{existing['id']}", json=body)
         else:
+            body = {"name": name, "type": "jobs", "body": filters, "is_alert_active": True}
             resp = self._client.post("/v0/saved_searches", json=body)
         resp.raise_for_status()
         return resp.json()

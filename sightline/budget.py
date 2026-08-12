@@ -43,28 +43,48 @@ def saved_search_name(profile_id: str) -> str:
     return f"sightline-{profile_id}"
 
 
+def set_profile_paused(theirstack: TheirStackClient, profile_id: str, paused: bool) -> bool:
+    """Pause or resume one search profile's daily webhook-driven ingestion,
+    independent of the other profile — the per-profile version of the
+    circuit breakers below, triggered by a deliberate dashboard action
+    rather than a spend threshold. Deactivates the saved search's alert
+    (the real stop — see module docstring on why the webhook alone isn't
+    enough) together with its webhook, or reactivates both. Returns False
+    if this profile has no saved search on TheirStack yet."""
+    saved_search = theirstack.find_saved_search(saved_search_name(profile_id))
+    if not saved_search:
+        return False
+    if bool(saved_search.get("is_alert_active")) == paused:
+        theirstack.set_saved_search_active(saved_search["id"], not paused)
+    webhook = theirstack.find_webhook_for_search(saved_search["id"])
+    if webhook and bool(webhook.get("is_active")) == paused:
+        theirstack.set_webhook_active(webhook["id"], not paused)
+    return True
+
+
+def profile_paused(theirstack: TheirStackClient, profile_id: str) -> bool | None:
+    """Current pause state read straight from TheirStack — None if this
+    profile has no saved search yet, or if TheirStack couldn't be reached at
+    all (rate limit, timeout, outage). This is a status display riding along
+    on /api/settings, a route loaded on every page view — a TheirStack
+    hiccup here must never 500 the whole dashboard just to show a pill."""
+    try:
+        saved_search = theirstack.find_saved_search(saved_search_name(profile_id))
+    except Exception:
+        return None
+    if not saved_search:
+        return None
+    return not bool(saved_search.get("is_alert_active"))
+
+
 def _disable_all_profiles(theirstack: TheirStackClient) -> None:
     for profile_id in SEARCH_PROFILE_IDS:
-        saved_search = theirstack.find_saved_search(saved_search_name(profile_id))
-        if not saved_search:
-            continue
-        if saved_search.get("is_alert_active"):
-            theirstack.set_saved_search_active(saved_search["id"], False)
-        webhook = theirstack.find_webhook_for_search(saved_search["id"])
-        if webhook and webhook.get("is_active"):
-            theirstack.set_webhook_active(webhook["id"], False)
+        set_profile_paused(theirstack, profile_id, True)
 
 
 def _enable_all_profiles(theirstack: TheirStackClient) -> None:
     for profile_id in SEARCH_PROFILE_IDS:
-        saved_search = theirstack.find_saved_search(saved_search_name(profile_id))
-        if not saved_search:
-            continue
-        if not saved_search.get("is_alert_active"):
-            theirstack.set_saved_search_active(saved_search["id"], True)
-        webhook = theirstack.find_webhook_for_search(saved_search["id"])
-        if webhook and not webhook.get("is_active"):
-            theirstack.set_webhook_active(webhook["id"], True)
+        set_profile_paused(theirstack, profile_id, False)
 
 
 def check_and_enforce_budget(
