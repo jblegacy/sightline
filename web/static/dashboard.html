@@ -17,8 +17,12 @@
   --display:'Archivo',system-ui,sans-serif;
   --body:'IBM Plex Sans',system-ui,sans-serif;
   --mono:'IBM Plex Mono',ui-monospace,monospace;
+  --radius:8px;
 }
-*{box-sizing:border-box}
+*{box-sizing:border-box;border-radius:var(--radius)}
+/* full-bleed layout chrome — a rounded corner on something that touches the
+   viewport edge (or a full-screen dimmer) reads as a bug, not a style */
+body,header,nav,.demo,.mask{border-radius:0}
 body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--body);font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
 .label{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--muted)}
 .mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
