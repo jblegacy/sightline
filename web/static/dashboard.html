@@ -458,6 +458,8 @@ table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       <div class="meter"><b id="cMeter" style="width:0%"></b></div>
       <div class="note" id="cMeterText">Loading…</div>
       <div class="note" id="cDailyText"></div>
+      <button class="btn sm ghost" id="resetDailyCap" style="margin-top:6px">Reset today's cap now</button>
+      <div class="note">Only clears today's spend count — doesn't change which profiles are active. Use after fixing whatever caused an overage; otherwise just wait for the automatic midnight reset.</div>
       <div class="warnbox" style="margin-top:13px"><b>Backlog is separate.</b> Currently-open matching roles are a one-time cost. Size it with preview, then sweep in tranches — don't let the first live run discover it.</div>
     </div>
 
@@ -1624,6 +1626,19 @@ document.addEventListener('click',e=>{
     const raw=$('#cRun').value.trim();
     patchSettings({monthly_credits:+($('#cMonth').value||200), daily_credit_cap: raw?+raw:null})
       .then(ok=>{if(ok){toast('Credit budget saved');loadCredits()}});
+    return}
+  if(e.target.id==='resetDailyCap'){
+    if(!confirm("Reset today's spend count to zero? This doesn't change which profiles are active — only clears the number that would otherwise re-trip the cap."))return;
+    e.target.disabled=true;
+    (async()=>{
+      try{
+        const resp=await fetch('/api/credits/reset-daily',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+        if(!resp.ok){const err=await resp.json().catch(()=>({detail:'failed'}));toast(`Failed: ${err.detail||resp.status}`);e.target.disabled=false;return}
+        toast("Today's cap reset");
+        loadCredits();
+      }catch(err){toast('Failed — see console');console.error('reset daily cap failed:',err);}
+      e.target.disabled=false;
+    })();
     return}
   if(e.target.id==='saveBadges'){
     patchSettings({

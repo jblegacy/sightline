@@ -193,3 +193,27 @@ def maybe_reset_daily_breaker(theirstack: TheirStackClient, db: SightlineDB) -> 
         entity_type="budget", event="daily_cap_reset", payload={"tripped_at": latest["created_at"]}
     )
     return {"reset": True, "tripped_at": latest["created_at"]}
+
+
+def force_reset_daily_baseline(theirstack: TheirStackClient, db: SightlineDB) -> dict[str, Any]:
+    """Manually reset today's spend baseline mid-day, without waiting for
+    the UTC-midnight auto-reset — for when the user explicitly wants
+    ingestion to resume today despite an already-tripped cap, e.g. right
+    after fixing the bug that caused the overage.
+
+    Deliberately does NOT call _enable_all_profiles. Which profiles are
+    active is a separate, deliberate choice the user makes per-profile via
+    set_profile_paused (e.g. cpg paused on purpose, automation not) — a
+    daily-cap reset re-enabling both would silently override that choice.
+    Whatever each profile's alert-active state already is stays exactly
+    as-is; this only clears the number that would otherwise re-trip the
+    breaker on the very next delivery."""
+    balance = theirstack.credit_balance()
+    used_total = balance["used_api_credits"]
+    today = _dt.datetime.now(_dt.timezone.utc).date().isoformat()
+    db.update_settings({"credit_balance_baseline": used_total, "credit_balance_baseline_date": today})
+    db.log_event(
+        entity_type="budget", event="daily_cap_reset",
+        payload={"used_api_credits": used_total, "manual": True},
+    )
+    return {"reset": True, "new_baseline": used_total}

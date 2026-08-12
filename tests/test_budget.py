@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 from sightline.budget import (
     check_and_enforce_budget,
     check_and_enforce_daily_cap,
+    force_reset_daily_baseline,
     maybe_reset_daily_breaker,
     profile_paused,
     saved_search_name,
@@ -291,3 +292,46 @@ def test_reset_already_enabled_is_not_toggled_again():
     assert result["reset"] is True
     ts.set_saved_search_active.assert_not_called()
     ts.set_webhook_active.assert_not_called()
+
+
+# ---- force_reset_daily_baseline: manual same-day reset, doesn't touch profiles ----
+
+
+def test_force_reset_sets_baseline_to_current_usage():
+    ts = make_theirstack(used_api_credits=536, active=False)
+    settings = {"credit_balance_baseline": 0, "credit_balance_baseline_date": YESTERDAY}
+    db = make_db_with_settings(settings)
+    result = force_reset_daily_baseline(ts, db)
+    assert result == {"reset": True, "new_baseline": 536}
+    assert settings["credit_balance_baseline"] == 536
+    assert settings["credit_balance_baseline_date"] == TODAY
+
+
+def test_force_reset_does_not_touch_profile_active_state():
+    # cpg paused on purpose (not by the breaker) must stay paused — a
+    # same-day reset is about the spend number, not which profiles run.
+    ts = make_theirstack(used_api_credits=536, active=True)
+    settings = {}
+    db = make_db_with_settings(settings)
+    force_reset_daily_baseline(ts, db)
+    ts.set_saved_search_active.assert_not_called()
+    ts.set_webhook_active.assert_not_called()
+
+
+def test_force_reset_logs_a_manual_daily_cap_reset_event():
+    ts = make_theirstack(used_api_credits=536, active=True)
+    settings = {}
+    db = make_db_with_settings(settings)
+    force_reset_daily_baseline(ts, db)
+    db.log_event.assert_called_once()
+    kwargs = db.log_event.call_args.kwargs
+    assert kwargs["event"] == "daily_cap_reset"
+    assert kwargs["payload"]["manual"] is True
+
+
+def test_used_today_reads_zero_immediately_after_force_reset():
+    ts = make_theirstack(used_api_credits=536, active=True)
+    settings = {}
+    db = make_db_with_settings(settings)
+    force_reset_daily_baseline(ts, db)
+    assert used_today(ts, db, settings) == 0

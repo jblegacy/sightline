@@ -19,7 +19,13 @@ from sightline.answers import chat_reply, next_ref
 from sightline.anthropic_client import AnthropicClient
 from sightline.assembly import assemble, variant_detail
 from sightline.auth import SESSION_COOKIE, SESSION_MAX_AGE_SECONDS, make_session_token, verify_session_token
-from sightline.budget import maybe_reset_daily_breaker, profile_paused, set_profile_paused, used_today
+from sightline.budget import (
+    force_reset_daily_baseline,
+    maybe_reset_daily_breaker,
+    profile_paused,
+    set_profile_paused,
+    used_today,
+)
 from sightline.config import Settings, get_settings
 from sightline.cover_letter import (
     STYLE_DESCRIPTIONS,
@@ -304,6 +310,19 @@ def api_credits(
         "used_today": used_today(theirstack, db, settings),
         "daily_breaker_reset": reset["reset"],
     }
+
+
+@app.post("/api/credits/reset-daily", dependencies=[Depends(require_auth)])
+def api_credits_reset_daily(
+    db: SightlineDB = Depends(get_db), theirstack: TheirStackClient = Depends(get_theirstack)
+) -> dict:
+    """Manual, same-day version of the lazy midnight reset above — for when
+    the daily cap tripped on a real overage that's since been fixed, and
+    waiting for UTC midnight isn't the point. Only clears the spend
+    baseline; each profile's paused/active state is untouched, so a
+    profile paused on purpose (not by the breaker) stays paused. See
+    sightline/budget.py force_reset_daily_baseline."""
+    return force_reset_daily_baseline(theirstack, db)
 
 
 @app.get("/api/metrics", dependencies=[Depends(require_auth)])
