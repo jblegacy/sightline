@@ -292,6 +292,7 @@ table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     <button role="tab" aria-selected="false" data-v="watch">Watchlist <span class="ct" id="c-watch">0</span></button>
     <button role="tab" aria-selected="false" data-v="apps">Applications <span class="ct" id="c-apps">0</span></button>
     <button role="tab" aria-selected="false" data-v="out">Outreach <span class="ct" id="c-out">0</span></button>
+    <button role="tab" aria-selected="false" data-v="arch">Archived <span class="ct" id="c-arch">0</span></button>
     <button role="tab" aria-selected="false" data-v="ans">Answers</button>
     <button role="tab" aria-selected="false" data-v="met">Metrics</button>
     <button role="tab" aria-selected="false" data-v="set">Settings</button>
@@ -328,6 +329,12 @@ table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     <h2>Outreach</h2>
     <p class="hint">Extracted reporting lines and company signals for your LinkedIn research. Drafts generate once you name a target — you send from your own inbox.</p>
     <div id="outWrap"></div>
+  </div>
+
+  <div class="view" id="v-arch">
+    <h2>Archived</h2>
+    <p class="hint">Everything currently hidden: filtered out before scoring, scored below the queue threshold, closed on TheirStack, archived by hand, or rejected from the queue. Kept, not deleted — restore anything worth a second look.</p>
+    <div id="archRows"></div>
   </div>
 
   <div class="view" id="v-ans">
@@ -553,6 +560,7 @@ const DIMS=[['Role fit',25],['Evidence overlap',20],['Seniority & scope',15],['R
 // Bullet selection now happens server-side — see sightline/assembly.py. Approve calls /api/postings/{id}/assemble.
 
 let P=[];
+let ARCHIVED=[];
 let ANS_LIBRARY=[];
 let ANS_MESSAGES=[];
 let ANS_CURRENT_REF=null;
@@ -653,6 +661,35 @@ function drawQueue(){
   $('#c-queue').textContent=q.length;
   $('#qfilters .ct').textContent=q.length;
   drawWatch();
+}
+
+function archRowHTML(item){
+  const scoreText=item.score==null?'—':item.score;
+  const kindLabel=item.kind==='rejected'?'rejected':(item.status==='expired'?'closed / archived by hand':'filtered out');
+  const restoreBtn=item.canRestore
+    ?`<button class="btn sm ghost" data-restore="${item.id}" data-restore-kind="${item.kind}">Restore</button>`
+    :'<span class="hint" style="margin:0">No score on file — re-add manually to reconsider</span>';
+  return `<div class="row" data-id="${item.id}">
+    <div class="badge mid"><span class="n mono">${scoreText}</span></div>
+    <div class="rowmain">
+      <p class="rtitle">${esc(item.co)} — ${esc(item.ti)}${item.url?` <a href="${esc(item.url)}" target="_blank" rel="noopener" class="srclink">View posting ↗</a>`:''}</p>
+      <div class="badges"><span class="pill ${item.kind==='rejected'?'rejected':'unsent'}">${kindLabel}</span></div>
+      <div class="rmeta"><span>seen ${esc(item.age||'')} ago</span></div>
+      ${item.reason?`<p class="rrat">${esc(item.reason)}</p>`:''}
+    </div>
+    <div class="rowacts">${restoreBtn}</div>
+  </div>`;
+}
+
+function drawArchived(){
+  const rejected=P.filter(p=>p.stage==='rejected').map(p=>({
+    id:p.id, co:p.co, ti:p.ti, url:p.url, score:p.score, kind:'rejected',
+    reason:(p.app&&p.app.notes)||'', age:p.age, canRestore:true,
+  }));
+  const closed=ARCHIVED.map(a=>({...a, kind:'archived'}));
+  const all=[...rejected,...closed];
+  $('#c-arch').textContent=all.length;
+  $('#archRows').innerHTML=all.length?all.map(archRowHTML).join(''):'<div class="empty">Nothing archived or rejected yet.</div>';
 }
 
 function drawWatch(){
@@ -1053,6 +1090,22 @@ document.addEventListener('click',e=>{
     })();
     return}
 
+  const rs=e.target.dataset.restore;
+  if(rs){
+    const kind=e.target.dataset.restoreKind;
+    (async()=>{
+      try{
+        const resp=kind==='rejected'
+          ?await fetch(`/api/postings/${rs}/application`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'queued'})})
+          :await fetch(`/api/postings/${rs}/restore`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+        if(!resp.ok){const err=await resp.json().catch(()=>({detail:'restore failed'}));
+          toast(`Failed: ${err.detail||resp.status}`);return}
+        toast('Restored — back in Queue or Watchlist');
+        await reloadPostings();
+      }catch(err){toast('Restore failed — see console');console.error('restore failed:',err);}
+    })();
+    return}
+
   if(e.target.id==='addManualBtn'){
     ['addTitle','addCompany','addUrl','addLocation','addJdText'].forEach(id=>$('#'+id).value='');
     $('#addRemote').value='';
@@ -1344,7 +1397,10 @@ async function patchApplication(id,fields){
 
 async function reloadPostings(){
   try{
-    P=await fetch('/api/postings').then(r=>{if(!r.ok)throw new Error('postings '+r.status);return r.json()});
+    [P,ARCHIVED]=await Promise.all([
+      fetch('/api/postings').then(r=>{if(!r.ok)throw new Error('postings '+r.status);return r.json()}),
+      fetch('/api/postings/archived').then(r=>{if(!r.ok)throw new Error('archived '+r.status);return r.json()}),
+    ]);
     drawAll();
     populateAnsPostingPicker();
   }catch(e){toast('Refresh failed — see console');console.error('reloadPostings failed:',e);}
@@ -1517,16 +1573,18 @@ function qCount(){
   const shown=document.querySelectorAll('#queueRows .row').length;
   const el=$('#qCount'); if(el) el.innerHTML=`<b>${shown}</b> of <b>${all}</b> fetched postings shown \u00b7 the other ${all-shown} are still stored, not deleted`;
 }
-function drawAll(){drawQueue();drawApps();drawOut();drawTags();qCount();}
+function drawAll(){drawQueue();drawApps();drawOut();drawArchived();drawTags();qCount();}
 
 async function loadLiveData(){
   const runinfo=$('#runinfo-text');
   try{
-    const [postings,settings]=await Promise.all([
+    const [postings,settings,archived]=await Promise.all([
       fetch('/api/postings').then(r=>{if(!r.ok)throw new Error('postings '+r.status);return r.json()}),
       fetch('/api/settings').then(r=>{if(!r.ok)throw new Error('settings '+r.status);return r.json()}),
+      fetch('/api/postings/archived').then(r=>{if(!r.ok)throw new Error('archived '+r.status);return r.json()}),
     ]);
     P=postings;
+    ARCHIVED=archived;
     QV=settings.qv; SCORE_THRESHOLD=settings.scoreThreshold;
     PROFILES=settings.profiles||[];
     ACTIVE=PROFILES[0]?.id||'automation';

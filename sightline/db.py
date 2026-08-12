@@ -301,6 +301,42 @@ class SightlineDB:
         resp.raise_for_status()
         return resp.json()
 
+    def list_archived_postings(self) -> list[dict[str, Any]]:
+        """Everything the deterministic filter or a manual/webhook closure took
+        out of rotation: status='archived' (below queue_min_score, or a
+        pre-score deterministic-filter hit — not remote, location-restricted,
+        expired) and status='expired' (job.closed webhook or the dashboard's
+        own Archive button). Queue-level Rejects aren't here — those stay
+        status='scored' with applications.status='rejected' and already flow
+        through list_scored_postings/postings_to_dashboard_p as stage='rejected'."""
+        resp = self._client.get(
+            "/postings",
+            params={
+                "status": "in.(archived,expired)",
+                "select": "*,companies(id,name),scores(*)",
+                "order": "first_seen_at.desc",
+                "scores.order": "id.desc",
+            },
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def restore_posting_status(self, posting_id: int) -> None:
+        """Undo for archive_posting_by_id / mark_posting_closed / the
+        deterministic filter's auto-archive — puts a posting back to
+        status='scored' so it reappears in Queue or Watchlist on its existing
+        score. The caller is responsible for checking a score actually exists
+        first (a pre-score deterministic-filter archive has none, and
+        'scored' with no score row renders as nothing — see
+        posting_row_to_p)."""
+        resp = self._client.patch(
+            "/postings",
+            params={"id": f"eq.{posting_id}"},
+            headers={"Prefer": "return=representation"},
+            json={"status": "scored"},
+        )
+        resp.raise_for_status()
+
     def get_answers(self) -> list[dict[str, Any]]:
         resp = self._client.get("/answers", params={"select": "*", "order": "ref"})
         resp.raise_for_status()

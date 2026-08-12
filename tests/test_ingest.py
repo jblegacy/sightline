@@ -123,6 +123,20 @@ class FakeDB:
             })
         return result
 
+    def list_archived_postings(self) -> list[dict[str, Any]]:
+        result = []
+        for row in self.postings.values():
+            if row.get("status") not in ("archived", "expired"):
+                continue
+            matching_scores = [s for s in self.scores if s.get("posting_id") == row["id"]]
+            result.append({**row, "companies": {"name": "Fake Co"}, "scores": matching_scores})
+        return result
+
+    def restore_posting_status(self, posting_id: int) -> None:
+        for row in self.postings.values():
+            if row["id"] == posting_id:
+                row["status"] = "scored"
+
     def insert_score(self, score: dict[str, Any]) -> dict[str, Any]:
         row = {**score, "id": len(self.scores) + 1}
         self.scores.append(row)

@@ -752,6 +752,75 @@ def test_api_archive_posting_removes_it_from_postings_list(client, fake_db):
     assert any(e["event"] == "archived_by_user" for e in fake_db.events)
 
 
+# ---- archived tab ----
+
+
+def test_api_postings_archived_requires_auth(raw_client):
+    resp = raw_client.get("/api/postings/archived")
+    assert resp.status_code == 401
+
+
+def test_api_postings_archived_lists_a_manually_archived_posting(client):
+    posting_id = _seed_scored_posting(client)
+    client.post(f"/api/postings/{posting_id}/archive", json={}, auth=(DASH_USER, DASH_PASS))
+
+    archived = client.get("/api/postings/archived", auth=(DASH_USER, DASH_PASS)).json()
+    assert len(archived) == 1
+    assert archived[0]["id"] == posting_id
+    assert archived[0]["status"] == "expired"
+    assert archived[0]["reason"] == "archived by user"
+    assert archived[0]["canRestore"] is True
+    assert archived[0]["score"] is not None
+
+
+def test_api_postings_archived_omits_queue_level_rejects(client):
+    """Rejects stay status='scored' and already surface as stage='rejected'
+    in /api/postings — the archived endpoint would double-count them."""
+    posting_id = _seed_scored_posting(client)
+    client.patch(
+        f"/api/postings/{posting_id}/application", json={"status": "rejected", "notes": "not a fit"},
+        auth=(DASH_USER, DASH_PASS),
+    )
+    archived = client.get("/api/postings/archived", auth=(DASH_USER, DASH_PASS)).json()
+    assert archived == []
+    postings = client.get("/api/postings", auth=(DASH_USER, DASH_PASS)).json()
+    assert postings[0]["stage"] == "rejected"
+
+
+def test_api_restore_posting_requires_auth(raw_client):
+    resp = raw_client.post("/api/postings/1/restore", json={})
+    assert resp.status_code == 401
+
+
+def test_api_restore_posting_puts_it_back_in_queue(client, fake_db):
+    posting_id = _seed_scored_posting(client)
+    client.post(f"/api/postings/{posting_id}/archive", json={}, auth=(DASH_USER, DASH_PASS))
+    assert client.get("/api/postings", auth=(DASH_USER, DASH_PASS)).json() == []
+
+    resp = client.post(f"/api/postings/{posting_id}/restore", json={}, auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 200
+
+    restored = client.get("/api/postings", auth=(DASH_USER, DASH_PASS)).json()
+    assert len(restored) == 1
+    assert restored[0]["id"] == posting_id
+    assert client.get("/api/postings/archived", auth=(DASH_USER, DASH_PASS)).json() == []
+    assert any(e["event"] == "restored_by_user" for e in fake_db.events)
+
+
+def test_api_restore_posting_without_a_score_400s(client, fake_db):
+    posting_id = _seed_scored_posting(client)
+    client.post(f"/api/postings/{posting_id}/archive", json={}, auth=(DASH_USER, DASH_PASS))
+    fake_db.scores.clear()  # simulate a pre-score deterministic-filter archive
+
+    resp = client.post(f"/api/postings/{posting_id}/restore", json={}, auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 400
+
+
+def test_api_restore_posting_404s_for_unknown_id(client):
+    resp = client.post("/api/postings/999999/restore", json={}, auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 404
+
+
 # ---- score override ----
 
 
