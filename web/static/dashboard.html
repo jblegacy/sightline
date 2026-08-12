@@ -373,6 +373,8 @@ table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
         <div class="fld"><label>Resume variant</label><input type="text" id="pVar" value="" disabled></div>
         <div class="fld"><label>Share of monthly credits</label><input type="text" id="pShare" value=""></div>
       </div>
+      <button class="btn go" id="saveProfileShare" style="margin-top:6px">Save share</button>
+      <div class="note">Enter as a percent (e.g. "80" or "80%"). Only this profile's share is saved — if you're rebalancing between profiles, update both so they still add to 100%.</div>
     </div>
 
     <div class="seclabel"><h3>Fetch criteria</h3><span class="cost paid">COSTS CREDITS</span>
@@ -639,6 +641,12 @@ function rowHTML(p){
 }
 
 let QF='all';
+const isAiTitle=ti=>/\bA\.?I\.?\b/i.test(ti||'');
+
+function sectionHead(label,count,hint){
+  return `<div class="seclabel"><h3>${esc(label)} <span class="ct">${count}</span></h3>${hint?`<p>${esc(hint)}</p>`:''}</div>`;
+}
+
 function drawQueue(){
   let q=P.filter(p=>p.stage==='queue');
   q=q.filter(p=>{
@@ -657,7 +665,13 @@ function drawQueue(){
            below:p=>['under','low'].includes(compTier(p).k)}[QF];
   const shown=f?q.filter(f):q;
   shown.sort((a,b)=>b.score-a.score);
-  $('#queueRows').innerHTML=shown.length?shown.map(rowHTML).join(''):'<div class="empty">Nothing matches this filter.</div>';
+
+  const aiRoles=shown.filter(p=>isAiTitle(p.ti));
+  const otherRoles=shown.filter(p=>!isAiTitle(p.ti));
+  let html='';
+  if(aiRoles.length)html+=sectionHead('AI Roles',aiRoles.length,'Title contains "AI" — surfaced first.')+aiRoles.map(rowHTML).join('');
+  if(otherRoles.length)html+=sectionHead('Other Roles',otherRoles.length)+otherRoles.map(rowHTML).join('');
+  $('#queueRows').innerHTML=html||'<div class="empty">Nothing matches this filter.</div>';
   $('#c-queue').textContent=q.length;
   $('#qfilters .ct').textContent=q.length;
   drawWatch();
@@ -1558,6 +1572,13 @@ document.addEventListener('click',e=>{
   if(e.target.id==='saveProfileTitles'){
     patchSearchProfile(ACTIVE,{title_include:CFG.inc,title_exclude:CFG.exc})
       .then(ok=>{if(ok)toast('Titles saved \u2014 synced to TheirStack')});
+    return}
+  if(e.target.id==='saveProfileShare'){
+    const raw=$('#pShare').value.trim().replace('%','');
+    const pct=+raw;
+    if(!raw||!Number.isFinite(pct)||pct<0||pct>100){toast('Enter a percent between 0 and 100');return}
+    patchSearchProfile(ACTIVE,{budget_share:pct/100})
+      .then(ok=>{if(ok){$('#pShare').value=Math.round(ok.budgetShare*100)+'%';toast('Share saved')}});
     return}
   if(e.target.id==='saveFetchCriteria'){
     patchSettings(currentScopeFields()).then(ok=>{if(ok)toast('Scope saved \u2014 synced to both profiles')});
