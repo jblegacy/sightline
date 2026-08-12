@@ -30,7 +30,7 @@ from sightline.cover_letter import (
 )
 from sightline.dashboard import postings_to_dashboard_p, search_profiles_to_dashboard, settings_to_cfg_qv
 from sightline.db import SightlineDB
-from sightline.ingest import handle_webhook_event
+from sightline.ingest import handle_manual_add, handle_webhook_event
 from sightline.metrics import compute_metrics
 from sightline.outreach import assemble_outreach
 from sightline.provenance import ProvenanceError
@@ -102,6 +102,24 @@ def api_postings(db: SightlineDB = Depends(get_db)) -> list[dict]:
     settings = db.get_settings()
     rows = db.list_scored_postings()
     return postings_to_dashboard_p(rows, score_threshold=settings.get("score_threshold", 70))
+
+
+@app.post("/api/postings/manual", dependencies=[Depends(require_auth)])
+def api_postings_manual(
+    fields: dict[str, Any],
+    db: SightlineDB = Depends(get_db),
+    anthropic: AnthropicClient = Depends(get_anthropic),
+) -> dict:
+    """A job the candidate found themselves — pasted in by hand, 0
+    TheirStack credits, scored through the exact same pipeline as a real
+    webhook delivery. See sightline/ingest.py handle_manual_add."""
+    profiles = db.get_search_profiles()
+    settings = db.get_settings()
+    try:
+        posting = handle_manual_add(db, anthropic, settings, profiles, fields)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"id": posting["id"], "status": posting["status"]}
 
 
 @app.get("/api/settings", dependencies=[Depends(require_auth)])

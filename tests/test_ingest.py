@@ -1,7 +1,13 @@
 from datetime import datetime, timezone
 from typing import Any
 
-from sightline.ingest import classify_search_profile, handle_webhook_event, job_to_posting
+from sightline.ingest import (
+    classify_search_profile,
+    handle_manual_add,
+    handle_webhook_event,
+    job_to_posting,
+    manual_job_to_posting,
+)
 
 
 class FakeDB:
@@ -460,6 +466,67 @@ def test_handle_job_new_is_idempotent_on_duplicate_delivery():
     dispatch(db, event)
     dispatch(db, event)  # TheirStack docs: duplicates possible in edge cases
     assert len(db.postings) == 1  # one row, not two
+
+
+# ---- manual add ----
+
+MANUAL_FIELDS = {
+    "title": "AI Automation Engineer",
+    "company": "Acme Inc",
+    "url": "https://acme.com/careers/manual-1",
+    "jd_text": "Build automation systems.",
+    "location": "US Remote",
+    "remote": True,
+}
+
+
+def test_manual_job_to_posting_hashes_url_into_a_stable_external_id():
+    posting = manual_job_to_posting(MANUAL_FIELDS, company_id=1, search_profile_id=None)
+    assert posting["external_id"].startswith("manual-")
+    again = manual_job_to_posting(MANUAL_FIELDS, company_id=1, search_profile_id=None)
+    assert posting["external_id"] == again["external_id"]  # same URL -> same id, upserts not duplicates
+
+
+def test_manual_job_to_posting_comp_source_absent_with_no_salary():
+    posting = manual_job_to_posting(MANUAL_FIELDS, company_id=1, search_profile_id=None)
+    assert posting["comp_source"] == "absent"
+    assert posting["remote_flag"] == "true"
+
+
+def test_handle_manual_add_requires_title_url_and_jd_text():
+    db = FakeDB()
+    try:
+        handle_manual_add(db, FakeAnthropic(), db.get_settings(), db.get_search_profiles(), {"title": "X"})
+        assert False, "expected ValueError"
+    except ValueError as e:
+        assert "required" in str(e)
+
+
+def test_handle_manual_add_ingests_scores_and_costs_zero_credits():
+    db = FakeDB()
+    posting = handle_manual_add(
+        db, FakeAnthropic(), db.get_settings(), db.get_search_profiles(), MANUAL_FIELDS
+    )
+    assert posting["status"] == "scored"
+    ingested = next(e for e in db.events if e["event"] == "ingested")
+    assert ingested["payload"]["source"] == "manual"
+    assert ingested["payload"]["credits_consumed"] == 0
+    assert any(e["event"] == "scored" for e in db.events)
+
+
+def test_handle_manual_add_archives_below_queue_min_score():
+    db = FakeDB(queue_min_score=999)
+    posting = handle_manual_add(
+        db, FakeAnthropic(), db.get_settings(), db.get_search_profiles(), MANUAL_FIELDS
+    )
+    assert posting["status"] == "archived"
+
+
+def test_handle_manual_add_upserts_on_repeat_url_instead_of_duplicating():
+    db = FakeDB()
+    handle_manual_add(db, FakeAnthropic(), db.get_settings(), db.get_search_profiles(), MANUAL_FIELDS)
+    handle_manual_add(db, FakeAnthropic(), db.get_settings(), db.get_search_profiles(), MANUAL_FIELDS)
+    assert len(db.postings) == 1
 
 
 def test_handle_job_new_does_not_rescore_a_redelivered_match():

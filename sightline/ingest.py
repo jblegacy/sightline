@@ -116,6 +116,16 @@ def handle_job_new(
         payload={"source": "theirstack_webhook", "theirstack_job_id": job["id"], "credits_consumed": 1},
     )
 
+    return _filter_and_score(db, anthropic, settings, posting)
+
+
+def _filter_and_score(
+    db: SightlineDB, anthropic: AnthropicClient, settings: dict[str, Any], posting: dict[str, Any]
+) -> dict[str, Any]:
+    """Shared tail of ingest, regardless of source: deterministic filter,
+    then scoring, then the queue_min_score cutoff. The row is already
+    inserted and its 'ingested' event already logged by the caller — this
+    only owns what happens after a posting exists."""
     filter_status, filter_reason = apply_filter(posting, settings.get("red_flag_phrases") or [])
     if filter_status == "archived":
         db.update_posting(posting["id"], {"status": "archived", "filter_reason": filter_reason})
@@ -146,6 +156,63 @@ def handle_job_new(
         db.update_posting(posting["id"], {"status": "scored"})
 
     return posting
+
+
+def manual_job_to_posting(fields: dict[str, Any], company_id: int, search_profile_id: str | None) -> dict[str, Any]:
+    """Builds a postings row from a job the candidate found and pasted in
+    themselves — same target shape as job_to_posting, no TheirStack credit
+    involved. Keyed by a hash of the URL (not a TheirStack id, there isn't
+    one) so re-submitting the same URL upserts instead of duplicating."""
+    url = fields["url"]
+    external_id = f"manual-{hashlib.sha256(url.encode()).hexdigest()[:24]}"
+    content_hash = hashlib.sha256(
+        f"{fields['title']}|{fields.get('company', '')}|{fields.get('jd_text', '')}".encode()
+    ).hexdigest()
+    remote = fields.get("remote")
+    comp_min, comp_max = fields.get("comp_min"), fields.get("comp_max")
+    return {
+        "company_id": company_id,
+        "external_id": external_id,
+        "title": fields["title"],
+        "url": url,
+        "location_raw": fields.get("location"),
+        "remote_flag": "true" if remote is True else ("false" if remote is False else "unclear"),
+        "comp_min": comp_min,
+        "comp_max": comp_max,
+        "comp_source": "posted" if (comp_min or comp_max) else "absent",
+        "posted_at": None,
+        "content_hash": content_hash,
+        "jd_text": fields.get("jd_text"),
+        "raw": {"source": "manual"},
+        "status": "new",
+        "search_profile_id": search_profile_id,
+    }
+
+
+def handle_manual_add(
+    db: SightlineDB,
+    anthropic: AnthropicClient,
+    settings: dict[str, Any],
+    profiles: list[dict[str, Any]],
+    fields: dict[str, Any],
+) -> dict[str, Any]:
+    """A posting the candidate found and entered by hand — 0 TheirStack
+    credits, runs through the exact same deterministic filter and scoring
+    as a real webhook delivery (see _filter_and_score), so it lands in
+    queue/watchlist/archived on the same terms as anything TheirStack
+    finds. Costs one Anthropic scoring call, same as any other posting."""
+    if not fields.get("title") or not fields.get("url") or not fields.get("jd_text"):
+        raise ValueError("title, url, and jd_text are required")
+
+    company_id = db.upsert_company(name=fields.get("company") or "Unknown", domain=None)
+    search_profile_id = classify_search_profile(fields["title"], profiles)
+    posting = db.upsert_posting(manual_job_to_posting(fields, company_id, search_profile_id))
+    db.log_event(
+        entity_type="posting", event="ingested", entity_id=posting["id"],
+        payload={"source": "manual", "credits_consumed": 0},
+    )
+
+    return _filter_and_score(db, anthropic, settings, posting)
 
 
 def handle_job_closed(db: SightlineDB, payload: dict[str, Any]) -> None:
