@@ -341,7 +341,7 @@ table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
   <div class="view" id="v-ans">
     <h2>Answer Workbench</h2>
-    <p class="hint">Draft application-question answers grounded in your verified bullets and existing library — the chat itself isn't saved, only what you explicitly save below.</p>
+    <p class="hint">Pick the application you're answering for, paste in the question — one or several — and chat it through. Save any reply straight from the message; the conversation itself isn't kept, only what you save.</p>
     <div class="answsplit">
       <div class="answlib">
         <input type="text" id="ansSearch" placeholder="Search saved answers…">
@@ -349,16 +349,14 @@ table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
         <button class="btn go" id="ansNew" style="margin-top:10px;width:100%">+ New question</button>
       </div>
       <div class="answwork">
-        <div class="f" style="margin-bottom:10px">
-          <input type="text" id="ansQType" placeholder="question_type, e.g. why_leaving_current_role">
-          <select id="ansPosting"><option value="">No specific posting</option></select>
+        <div class="fld" style="margin-bottom:10px">
+          <label>Application</label>
+          <select id="ansPosting"><option value="">General — not tied to a specific role</option></select>
+          <button class="btn sm ghost" id="ansReuseBtn" style="display:none;margin-top:6px">Mark as reused for this application</button>
         </div>
         <div id="ansChat" class="chatlog"><p class="hint">Pick "+ New question" or load a saved answer to start.</p></div>
-        <textarea id="ansChatInput" rows="2" placeholder="Paste the question, or reply…"></textarea>
+        <textarea id="ansChatInput" rows="2" placeholder="Paste the question(s), or reply…"></textarea>
         <div class="acts"><button class="btn go" id="ansSend">Send</button></div>
-        <h4 style="margin-top:16px">Current draft — edit freely before saving</h4>
-        <textarea id="ansDraft" rows="8" placeholder="Click &quot;Use as draft&quot; on a reply, or type directly."></textarea>
-        <div class="acts"><button class="btn go" id="ansSaveBtn">Save to library</button></div>
       </div>
     </div>
   </div>
@@ -575,6 +573,7 @@ let ARCHIVED=[];
 let ANS_LIBRARY=[];
 let ANS_MESSAGES=[];
 let ANS_CURRENT_REF=null;
+let ANS_SUGGESTED_TYPE=null;
 
 function compTier(p){
   if(p.compSrc!=='posted'||p.compMax==null) return {k:'unknown',t:'comp not posted'};
@@ -1095,9 +1094,9 @@ document.addEventListener('click',e=>{
   const la=e.target.closest('[data-loadans]');
   if(la){loadAnswerIntoWorkbench(la.dataset.loadans);return}
   if(e.target.id==='ansSend'){sendAnsChat();return}
-  if(e.target.id==='ansSaveBtn'){saveAnswer();return}
-  const ud=e.target.dataset.usedraft;
-  if(ud!==undefined){$('#ansDraft').value=ANS_MESSAGES[+ud].content;toast('Copied into draft');return}
+  if(e.target.id==='ansReuseBtn'){reuseCurrentAnswer();return}
+  const sa=e.target.dataset.saveans;
+  if(sa!==undefined){saveAnsMessage(+sa);return}
 
   const df=e.target.dataset.diff;
   if(df){renderDiff(+df);return}
@@ -1258,6 +1257,7 @@ document.addEventListener('change',e=>{
   }
   const nt=e.target.dataset.nt;
   if(nt){patchApplication(nt,{notes:e.target.value});}
+  if(e.target.id==='ansPosting'){updateAnsReuseBtn();}
 });
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){$('#mask').classList.remove('on');$('#clMask').classList.remove('on');$('#addMask').classList.remove('on')}});
 
@@ -1332,20 +1332,30 @@ async function loadAnswers(){
 
 function drawAnswerLibrary(){
   const q=($('#ansSearch').value||'').toLowerCase();
-  const filtered=ANS_LIBRARY.filter(a=>!q||a.question_type.toLowerCase().includes(q)||a.text.toLowerCase().includes(q));
+  const filtered=ANS_LIBRARY.filter(a=>!q||a.question_type.toLowerCase().includes(q)||(a.question_text||'').toLowerCase().includes(q)||a.text.toLowerCase().includes(q));
   $('#ansLibList').innerHTML=filtered.map(a=>
     `<div class="anslibitem ${a.ref===ANS_CURRENT_REF?'active':''}" data-loadans="${esc(a.ref)}">
-      <div class="ref">${esc(a.ref)} · ${esc(a.status)}</div>
-      <div>${esc(a.question_type)}</div>
+      <div class="ref">${esc(a.ref)} · ${esc(a.status)}${a.times_used?` · used ${a.times_used}×`:''}</div>
+      <div>${esc(a.question_text||a.question_type)}</div>
     </div>`).join('') || '<p class="hint">No saved answers yet.</p>';
 }
 
 function populateAnsPostingPicker(){
   const sel=$('#ansPosting'); if(!sel)return;
   const current=sel.value;
-  sel.innerHTML='<option value="">No specific posting</option>'+
-    P.map(p=>`<option value="${p.id}">${esc(p.co)} — ${esc(p.ti)}</option>`).join('');
+  const active=P.filter(p=>['approved','applied'].includes(p.stage));
+  sel.innerHTML='<option value="">General — not tied to a specific role</option>'+
+    active.map(p=>`<option value="${p.id}">${esc(p.co)} — ${esc(p.ti)}</option>`).join('');
   sel.value=current;
+  updateAnsReuseBtn();
+}
+
+function updateAnsReuseBtn(){
+  const btn=$('#ansReuseBtn'); if(!btn)return;
+  const postingId=$('#ansPosting').value;
+  const a=ANS_LIBRARY.find(x=>x.ref===ANS_CURRENT_REF);
+  const showIt=a && postingId && String(a.posting_id||'')!==String(postingId);
+  btn.style.display=showIt?'inline-block':'none';
 }
 
 function renderAnsChat(){
@@ -1357,15 +1367,15 @@ function renderAnsChat(){
     `<div class="chatmsg ${m.role}">
       <div class="chatrole">${m.role==='user'?'You':'Assistant'}</div>
       <div class="chatbody">${esc(m.content)}</div>
-      ${m.role==='assistant'?`<button class="btn sm ghost" data-usedraft="${i}" style="margin-top:4px">Use as draft →</button>`:''}
+      ${m.role==='assistant'?`<button class="btn sm go" data-saveans="${i}" style="margin-top:4px">Save this answer</button>`:''}
     </div>`).join('');
   const log=$('#ansChat'); log.scrollTop=log.scrollHeight;
 }
 
 function startNewAnswer(){
-  ANS_CURRENT_REF=null; ANS_MESSAGES=[];
-  $('#ansQType').value=''; $('#ansDraft').value=''; $('#ansChatInput').value='';
-  renderAnsChat(); drawAnswerLibrary();
+  ANS_CURRENT_REF=null; ANS_MESSAGES=[]; ANS_SUGGESTED_TYPE=null;
+  $('#ansChatInput').value='';
+  renderAnsChat(); drawAnswerLibrary(); updateAnsReuseBtn();
   $('#ansChatInput').focus();
 }
 
@@ -1373,13 +1383,12 @@ function loadAnswerIntoWorkbench(ref){
   const a=ANS_LIBRARY.find(x=>x.ref===ref);
   if(!a)return;
   ANS_CURRENT_REF=ref;
-  $('#ansQType').value=a.question_type;
-  $('#ansDraft').value=a.text;
+  ANS_SUGGESTED_TYPE=a.question_type;
   ANS_MESSAGES=[
-    {role:'user',content:`Here is the current saved answer for question_type "${a.question_type}" (ref ${a.ref}):\n\n${a.text}\n\nI want to refine it.`},
+    {role:'user',content:a.question_text||`Here is the current saved answer for question_type "${a.question_type}" (ref ${a.ref}):\n\n${a.text}\n\nI want to refine it.`},
     {role:'assistant',content:a.text},
   ];
-  renderAnsChat(); drawAnswerLibrary();
+  renderAnsChat(); drawAnswerLibrary(); updateAnsReuseBtn();
 }
 
 async function sendAnsChat(){
@@ -1396,22 +1405,41 @@ async function sendAnsChat(){
     if(!resp.ok){const err=await resp.json().catch(()=>({detail:'chat failed'}));toast('Chat failed — '+(err.detail||resp.status));ANS_MESSAGES.pop();renderAnsChat();return}
     const body=await resp.json();
     ANS_MESSAGES.push({role:'assistant',content:body.reply});
+    ANS_SUGGESTED_TYPE=body.suggested_question_type||ANS_SUGGESTED_TYPE;
     renderAnsChat();
   }catch(e){toast('Chat failed — see console');console.error('answers chat failed:',e);ANS_MESSAGES.pop();renderAnsChat();}
   finally{$('#ansSend').disabled=false}
 }
 
-async function saveAnswer(){
-  const text=$('#ansDraft').value.trim();
-  const questionType=$('#ansQType').value.trim();
-  if(!text||!questionType){toast('Need both a question_type and draft text');return}
+async function saveAnsMessage(idx){
+  const text=(ANS_MESSAGES[idx]||{}).content?.trim();
+  if(!text||text.length<20){toast('Too short to save as an answer');return}
+  const questionType=prompt('Save as which question_type? (edit if this guess is off)', ANS_SUGGESTED_TYPE||'');
+  if(questionType===null)return;
+  if(!questionType.trim()){toast('Need a question_type to save under');return}
+  const firstUserMsg=ANS_MESSAGES.find(m=>m.role==='user');
+  const postingId=$('#ansPosting').value;
   const resp=await fetch('/api/answers/save',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({ref:ANS_CURRENT_REF,question_type:questionType,text})});
+    body:JSON.stringify({
+      ref:ANS_CURRENT_REF, question_type:questionType.trim(), text,
+      question_text: firstUserMsg?firstUserMsg.content:null,
+      posting_id: postingId?+postingId:undefined,
+    })});
   if(!resp.ok){const err=await resp.json().catch(()=>({detail:'save failed'}));toast('Save failed — '+(err.detail||resp.status));return}
   const saved=await resp.json();
   ANS_CURRENT_REF=saved.ref;
   toast(`Saved as ${saved.ref}`);
   await loadAnswers();
+  updateAnsReuseBtn();
+}
+
+async function reuseCurrentAnswer(){
+  if(!ANS_CURRENT_REF){toast('Load a saved answer first');return}
+  const resp=await fetch(`/api/answers/${ANS_CURRENT_REF}/mark-used`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+  if(!resp.ok){const err=await resp.json().catch(()=>({detail:'failed'}));toast('Failed — '+(err.detail||resp.status));return}
+  toast(`${ANS_CURRENT_REF} marked reused for this application`);
+  await loadAnswers();
+  updateAnsReuseBtn();
 }
 
 async function patchScoreOverride(id,fields){

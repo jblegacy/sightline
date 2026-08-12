@@ -245,6 +245,14 @@ class FakeDB:
         self.answers.append(row)
         return row
 
+    def mark_answer_used(self, ref: str) -> dict[str, Any]:
+        existing = next((a for a in self.answers if a.get("ref") == ref), None)
+        if not existing:
+            raise LookupError(f"answer {ref!r} not found")
+        existing["times_used"] = (existing.get("times_used") or 0) + 1
+        existing["last_used_at"] = datetime.now(timezone.utc).isoformat()
+        return existing
+
     def upsert_application(self, fields: dict[str, Any]) -> dict[str, Any]:
         existing = next(
             (a for a in self.applications if a.get("posting_id") == fields.get("posting_id")), None
