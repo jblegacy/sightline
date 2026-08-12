@@ -69,14 +69,19 @@ ends right after step 3. A fixed closing line is appended separately afterward; 
 here would duplicate it.
 If a draft would run over 160 words, cut the credibility-marker sentence (step 3) before cutting \
 anything else.""",
-    "warm": """Structure, in this order — target 180-240 words total:
+    "warm": """Structure, in this order — target 190-250 words total:
 1. Opening — the shared opener below.
-2. Transition sentence, then ONE line per JD category identified above, in the JD's own order — \
+2. Company-research beat — ONE sentence naming something specific and real about this company, \
+pulled from the company signals or the JD itself — not generic enthusiasm ("I'm passionate about \
+[industry]" / "I'd love to work here"), an actual detail (a market, a product, a specific problem \
+they've described taking on). If nothing specific enough is available in what you're given, skip \
+this sentence entirely rather than inventing one — a vague substitute is worse than no beat at all.
+3. Transition sentence, then ONE line per JD category identified above, in the JD's own order — \
 not a free pick of your best wins. Each line connects your closest matching verified achievement \
 to that category's actual ask (see "show your work" above). If a category has no strong direct \
 match, use the closest honest, defensible connection rather than skipping it outright. Each line \
 starts with "- ", is one line, no sub-clauses, and stays under about 30 words.
-3. Do not write a closing sentence, sign-off, or "looking forward to..." line — the letter body \
+4. Do not write a closing sentence, sign-off, or "looking forward to..." line — the letter body \
 ends right after the last bullet line. A fixed closing line is appended separately afterward; \
 writing your own here would duplicate it.""",
 }
@@ -90,7 +95,7 @@ STYLE_LABELS = {
 STYLE_DESCRIPTIONS = {
     "traditional": "Company-research beat + one line per JD category. Most formal, most complete.",
     "compressed": "Prose only, no bullets, one category only. Shortest — reads like a note.",
-    "warm": "One line per JD category, warm and casual throughout.",
+    "warm": "Company-research beat + one line per JD category, warm and casual throughout.",
 }
 
 STYLES = tuple(STYLE_STRUCTURES)
