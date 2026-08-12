@@ -69,14 +69,19 @@ ends right after step 3. A fixed closing line is appended separately afterward; 
 here would duplicate it.
 If a draft would run over 160 words, cut the credibility-marker sentence (step 3) before cutting \
 anything else.""",
-    "warm": """Structure, in this order — target 180-240 words total:
+    "warm": """Structure, in this order — target 190-250 words total:
 1. Opening — the shared opener below.
-2. Transition sentence, then ONE line per JD category identified above, in the JD's own order — \
+2. Company-research beat — ONE sentence naming something specific and real about this company, \
+pulled from the company signals or the JD itself — not generic enthusiasm ("I'm passionate about \
+[industry]" / "I'd love to work here"), an actual detail (a market, a product, a specific problem \
+they've described taking on). If nothing specific enough is available in what you're given, skip \
+this sentence entirely rather than inventing one — a vague substitute is worse than no beat at all.
+3. Transition sentence, then ONE line per JD category identified above, in the JD's own order — \
 not a free pick of your best wins. Each line connects your closest matching verified achievement \
 to that category's actual ask (see "show your work" above). If a category has no strong direct \
 match, use the closest honest, defensible connection rather than skipping it outright. Each line \
 starts with "- ", is one line, no sub-clauses, and stays under about 30 words.
-3. Do not write a closing sentence, sign-off, or "looking forward to..." line — the letter body \
+4. Do not write a closing sentence, sign-off, or "looking forward to..." line — the letter body \
 ends right after the last bullet line. A fixed closing line is appended separately afterward; \
 writing your own here would duplicate it.""",
 }
@@ -90,7 +95,7 @@ STYLE_LABELS = {
 STYLE_DESCRIPTIONS = {
     "traditional": "Company-research beat + one line per JD category. Most formal, most complete.",
     "compressed": "Prose only, no bullets, one category only. Shortest — reads like a note.",
-    "warm": "One line per JD category, warm and casual throughout.",
+    "warm": "Company-research beat + one line per JD category, warm and casual throughout.",
 }
 
 STYLES = tuple(STYLE_STRUCTURES)
@@ -156,17 +161,38 @@ State each achievement in your own words, in a natural, conversational register 
 of the verified bullet's phrasing. The number, outcome, and claim must match a verified bullet \
 exactly; the sentence construction must not. A line that reads like it was lifted straight off a \
 resume is a bug — a cover letter is prose meant to be read like someone talking, not scanned in \
-resume fragments. When a structure below calls for multiple lines, vary how each one starts: \
-three or four in a row all opening with a past-tense verb ("Built... Created... Standardized...") \
-is exactly the parallel cadence that makes a cover letter read like resume bullets pasted into a \
-document instead of a person explaining their fit. Break the pattern — lead one line with the \
-outcome, another with the relevance, another with the work itself.
+resume fragments.
+
+When a structure below calls for multiple lines, no more than HALF of them may start with "I" as \
+the literal first word of the line — count this as you write, the same way you'd track a word \
+cap. This isn't about varying the verb ("Built... Created... Standardized..." still fails even \
+though the verbs differ) — it's the word "I" itself repeated as every line's opening that reads \
+as self-focused and makes the letter feel like a list of "I did this, I did that" rather than \
+someone explaining their fit. For the lines that don't open with "I," use a real alternative \
+structure, not a filler word tacked on front:
+- A subordinate clause first: "Before I chose a platform for a client's broken inventory system, \
+I mapped their entire workflow by hand, which is the same discipline this role needs before \
+recommending automation."
+- A topical phrase first: "On the governance side, I designed the reporting infrastructure \
+executives used to make decisions, so I know what it takes to define standards an agent can be \
+trusted to work from."
+- The deliverable itself as the grammatical subject: "The reporting infrastructure I built became \
+what executives actually used to make decisions."
+Mix these in naturally — don't force every single line into a different pattern for its own sake, \
+just break up the run of "I" openings so it doesn't read as a monotonous self-inventory.
 
 Confident, not cocky. State what you did and let it speak for itself — never tell the reader \
 what the role "actually" is, what they're "actually" asking for beneath the posting's own words, \
 or frame yourself as seeing something about the job that they don't. Never compare yourself to \
 other candidates ("further than most candidates," "unlike other applicants") — you have no idea \
 who else applied, and the claim reads as arrogant rather than as evidence.
+
+None of the instructions above change the document's shape. "Conversational register" and "read \
+like someone talking" describe the wording INSIDE each line, never a license to merge the \
+achievement list into a flowing paragraph. When the structure below calls for a bulleted list, \
+that means literally one line per achievement, each one starting with "- ", exactly as many \
+lines as there are categories — not folded into prose, not combined into fewer sentences, \
+regardless of how conversational each line's wording is.
 
 {structure}
 
