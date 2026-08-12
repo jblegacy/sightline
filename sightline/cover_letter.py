@@ -75,9 +75,11 @@ not a free pick of your best wins. Each line connects your closest matching veri
 to that category's actual ask (see "show your work" above). If a category has no strong direct \
 match, use the closest honest, defensible connection rather than skipping it outright. Each line \
 starts with "- ", is one line, no sub-clauses, and stays under about 30 words.
-3. Close — ONE to two sentences: confident and forward-looking, naming a concrete next step \
-you'll personally take (e.g. following up by a specific point in time) rather than a vague \
-"looking forward to hearing from you".""",
+3. Close — ONE to two sentences, warm and casual: invite them to reach out with questions (e.g. \
+"please feel free to reach out if you have any questions") and name a concrete next step you'll \
+personally take (e.g. following up by a specific point in time). Should read like the end of a \
+message to a person, not a formal sign-off — "looking forward to chatting" beats "I look forward \
+to hearing from you.\"""",
 }
 
 STYLE_LABELS = {
@@ -129,6 +131,27 @@ ground-up build this role's Business Process Analysis work needs") is what a cov
 that a resume can't. Every achievement you cite must connect explicitly to the category it's \
 standing in for — pull the connection from the JD's own language, and don't assume the reader \
 will draw the line themselves. Draw it for them, in the same sentence or line.
+
+The bridge is not optional for any line — every single one needs it, not just most of them. And \
+it has to be specific: name the actual thing from the JD (the initiative type, the population \
+served, the concrete deliverable, the specific challenge the posting names) — never a generic \
+abstraction like "the same instinct this role needs" or "exactly what this role is asking for." \
+If you can't find a genuine, specific bridge for a bullet, pick a different verified bullet \
+instead of letting that line stand without one or reaching for a vague truism to fill the gap.
+
+Write plain, not corporate. No business-metaphor shorthand — "connective tissue," "move the \
+needle," "synergy," and similar — describe the actual work directly instead. Each line should \
+read as one clean sentence you'd say out loud in conversation: if it needs more than one \
+qualifying clause, restructure it as a straightforward sentence rather than stacking an \
+"including..." onto a "before/once..." onto the main clause — that's what makes a line hard to \
+parse in one pass.
+
+Whenever a structure below calls for a transition sentence, its grammatical subject must be the \
+candidate's own background, stated concretely — a real noun phrase for what you actually do \
+(e.g. "My background is building AI agent systems and the operational infrastructure around \
+them"), never the posting or the role ("This role requires...", "The posting moves through...", \
+"There are a few things this job is asking for..."). A transition sentence that describes the JD \
+instead of the candidate reads like a worksheet, not a person.
 
 State each achievement in your own words, in a natural, conversational register — never a copy \
 of the verified bullet's phrasing. The number, outcome, and claim must match a verified bullet \
