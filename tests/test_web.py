@@ -450,6 +450,25 @@ def test_api_postings_manual_ingests_and_scores_at_zero_credits(client, fake_db)
         assert any(p["ti"] == "Business Operations Generalist" for p in postings)
 
 
+def test_api_postings_manual_unexpected_failure_returns_real_detail(client, fake_db, monkeypatch):
+    """A failure past field validation (Supabase hiccup, scoring-call error,
+    etc.) used to reach the browser as a bare 500 with no body — nothing to
+    copy/paste for debugging. It must now come back with the actual error."""
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("simulated Supabase outage")
+
+    monkeypatch.setattr(fake_db, "upsert_company", _boom)
+    resp = client.post("/api/postings/manual", json=MANUAL_FIELDS, auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 500
+    detail = resp.json()["detail"]
+    assert "RuntimeError" in detail
+    assert "simulated Supabase outage" in detail
+
+    failed = next(e for e in fake_db.events if e["event"] == "manual_add_failed")
+    assert failed["payload"]["error"] == "simulated Supabase outage"
+
+
 def test_api_postings_manual_repeat_url_upserts_not_duplicates(client, fake_db):
     client.post("/api/postings/manual", json=MANUAL_FIELDS, auth=(DASH_USER, DASH_PASS))
     client.post("/api/postings/manual", json=MANUAL_FIELDS, auth=(DASH_USER, DASH_PASS))

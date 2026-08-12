@@ -527,6 +527,13 @@ table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     <div><button class="btn sm ghost" id="addClose">Close</button></div></div>
   <div class="mbody">
     <p class="hint" style="margin:0 0 14px">For a job you found yourself, outside TheirStack — 0 credits. Runs through the same filter and scoring as anything ingested automatically, and lands in queue, watchlist, or archived on the same terms.</p>
+    <div id="addErrBox" style="display:none;margin:0 0 14px;padding:10px 12px;border:1px solid #c0392b;border-radius:6px;background:rgba(192,57,43,0.08)">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px">
+        <span style="font-weight:600;color:#c0392b">Add failed</span>
+        <button class="btn sm ghost" id="addErrCopy" type="button">Copy error</button>
+      </div>
+      <pre id="addErrText" style="white-space:pre-wrap;word-break:break-word;margin:0;font-size:12.5px;user-select:text"></pre>
+    </div>
     <label class="flabel">Job title *</label>
     <input type="text" id="addTitle" class="finput" placeholder="Business Operations Generalist">
     <label class="flabel">Company</label>
@@ -1138,7 +1145,12 @@ document.addEventListener('click',e=>{
   if(e.target.id==='addManualBtn'){
     ['addTitle','addCompany','addUrl','addLocation','addJdText'].forEach(id=>$('#'+id).value='');
     $('#addRemote').value='';
+    $('#addErrBox').style.display='none';
     $('#addMask').classList.add('on');
+    return}
+  if(e.target.id==='addErrCopy'){
+    const txt=$('#addErrText').textContent;
+    navigator.clipboard?.writeText(txt).then(()=>toast('Copied')).catch(()=>toast('Copy failed — select manually'));
     return}
   if(e.target.id==='addClose'||e.target.id==='addCancel'||e.target.id==='addMask'){$('#addMask').classList.remove('on');return}
   if(e.target.id==='addSubmit'){
@@ -1152,11 +1164,14 @@ document.addEventListener('click',e=>{
       remote: remoteVal===''?undefined:remoteVal==='true',
     };
     e.target.disabled=true; e.target.textContent='Scoring…';
+    $('#addErrBox').style.display='none';
     (async()=>{
       try{
         const resp=await fetch('/api/postings/manual',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-        if(!resp.ok){const err=await resp.json().catch(()=>({detail:'failed'}));
-          toast(`Failed: ${err.detail||resp.status}`);
+        if(!resp.ok){const err=await resp.json().catch(()=>({detail:`HTTP ${resp.status} (no response body)`}));
+          $('#addErrText').textContent=err.detail||`HTTP ${resp.status}`;
+          $('#addErrBox').style.display='block';
+          toast('Add failed — see error above');
           e.target.disabled=false;e.target.textContent='Add and score';return}
         const body=await resp.json();
         $('#addMask').classList.remove('on');
@@ -1164,7 +1179,11 @@ document.addEventListener('click',e=>{
         e.target.disabled=false;e.target.textContent='Add and score';
         await reloadPostings();
         if(body.status==='archived')refreshArchived();
-      }catch(err){toast('Failed — see console');console.error('manual add failed:',err);
+      }catch(err){
+        $('#addErrText').textContent=String(err && err.message || err);
+        $('#addErrBox').style.display='block';
+        toast('Add failed — see error above');
+        console.error('manual add failed:',err);
         e.target.disabled=false;e.target.textContent='Add and score';}
     })();
     return}

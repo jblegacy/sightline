@@ -171,12 +171,28 @@ def api_postings_manual(
     """A job the candidate found themselves — pasted in by hand, 0
     TheirStack credits, scored through the exact same pipeline as a real
     webhook delivery. See sightline/ingest.py handle_manual_add."""
-    profiles = db.get_search_profiles()
-    settings = db.get_settings()
     try:
+        profiles = db.get_search_profiles()
+        settings = db.get_settings()
         posting = handle_manual_add(db, anthropic, settings, profiles, fields)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        # Anything past validation (a Supabase hiccup, a scoring-call
+        # failure, a duplicate URL constraint) used to surface to the
+        # browser as a bare 500 with no body — the user had nothing to
+        # copy/paste back for debugging. Log the real error both places
+        # (events, for the pipeline's own trail; logger, for Railway) and
+        # hand the actual message to the client instead of swallowing it.
+        logger.exception("manual add failed for title=%r url=%r", fields.get("title"), fields.get("url"))
+        try:
+            db.log_event(
+                entity_type="posting", event="manual_add_failed",
+                payload={"title": fields.get("title"), "url": fields.get("url"), "error": str(e)},
+            )
+        except Exception:
+            pass  # DB may be the reason the add failed in the first place — don't mask the real error
+        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}") from e
     return {"id": posting["id"], "status": posting["status"]}
 
 
