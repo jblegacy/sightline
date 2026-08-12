@@ -383,6 +383,24 @@ def test_api_credits_returns_real_balance(client):
     assert body["used_today"] == 0
 
 
+def test_api_credits_reset_daily_requires_auth(raw_client):
+    resp = raw_client.post("/api/credits/reset-daily", json={})
+    assert resp.status_code == 401
+
+
+def test_api_credits_reset_daily_zeroes_used_today(client):
+    client.patch("/api/settings", json={"daily_credit_cap": 5}, auth=(DASH_USER, DASH_PASS))
+    before = client.get("/api/credits", auth=(DASH_USER, DASH_PASS)).json()
+    assert before["used_today"] == 0  # FakeTheirStack's used_api_credits=10, first call sets baseline
+
+    resp = client.post("/api/credits/reset-daily", json={}, auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 200
+    assert resp.json() == {"reset": True, "new_baseline": 10}
+
+    after = client.get("/api/credits", auth=(DASH_USER, DASH_PASS)).json()
+    assert after["used_today"] == 0
+
+
 # ---- assembly ----
 
 

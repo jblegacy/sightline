@@ -41,6 +41,10 @@ terms are fine, but echoing their specific constructions reads as machine-genera
 conclusion-first construction — start with a fact or a situation.
 12. Motivation, if it appears, reads as interest and curiosity ("I'm curious," "it would be neat \
 to") — never as passion or excitement.
+13. Never use markdown formatting — no **bold**, no # headers, no bullet points used for emphasis \
+inside a paragraph. Plain prose only, exactly like someone typing directly into a text box. \
+Markdown syntax surviving into a written answer is an immediate, obvious tell that it was \
+AI-generated, regardless of how good the content underneath it is.
 
 Calibration pair — the wrong register, then the same content in his actual voice:
 
