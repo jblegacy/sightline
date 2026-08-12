@@ -298,6 +298,51 @@ def _seed_scored_posting(client) -> int:
     return posting["id"]
 
 
+# ---- manual add ----
+
+MANUAL_FIELDS = {
+    "title": "Business Operations Generalist",
+    "company": "Rex Client",
+    "url": "https://rex.zone/jobs/12345",
+    "jd_text": "Own ambiguous operational problems and turn them into measurable outcomes.",
+    "location": "United States",
+    "remote": True,
+}
+
+
+def test_api_postings_manual_requires_auth(client):
+    resp = client.post("/api/postings/manual", json=MANUAL_FIELDS)
+    assert resp.status_code == 401
+
+
+def test_api_postings_manual_requires_title_url_and_jd_text(client):
+    resp = client.post(
+        "/api/postings/manual", json={"title": "X"}, auth=(DASH_USER, DASH_PASS),
+    )
+    assert resp.status_code == 400
+
+
+def test_api_postings_manual_ingests_and_scores_at_zero_credits(client, fake_db):
+    resp = client.post("/api/postings/manual", json=MANUAL_FIELDS, auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] in ("scored", "archived")
+
+    ingested = next(e for e in fake_db.events if e["event"] == "ingested")
+    assert ingested["payload"]["source"] == "manual"
+    assert ingested["payload"]["credits_consumed"] == 0
+
+    if body["status"] == "scored":
+        postings = client.get("/api/postings", auth=(DASH_USER, DASH_PASS)).json()
+        assert any(p["ti"] == "Business Operations Generalist" for p in postings)
+
+
+def test_api_postings_manual_repeat_url_upserts_not_duplicates(client, fake_db):
+    client.post("/api/postings/manual", json=MANUAL_FIELDS, auth=(DASH_USER, DASH_PASS))
+    client.post("/api/postings/manual", json=MANUAL_FIELDS, auth=(DASH_USER, DASH_PASS))
+    assert len(fake_db.postings) == 1
+
+
 def test_api_assemble_requires_auth(client):
     resp = client.post("/api/postings/1/assemble", json={})
     assert resp.status_code == 401

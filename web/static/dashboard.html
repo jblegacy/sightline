@@ -258,6 +258,8 @@ table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .clbody{white-space:pre-wrap;font-size:12.5px;flex:1;overflow:auto;max-height:360px;margin:0 0 12px;padding-right:2px}
 @media (max-width:900px){.clcols{grid-template-columns:1fr}}
 .notesin{width:100%;font-family:var(--body);font-size:12.5px;padding:5px 7px;border:1px solid var(--rule);background:var(--panel);min-height:30px}
+.flabel{display:block;font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:12px 0 4px}
+.finput{width:100%;font-family:var(--body);font-size:12.5px;padding:5px 7px;border:1px solid var(--rule);background:var(--panel);color:var(--ink)}
 @media (max-width:760px){.dcols{grid-template-columns:1fr}.mask{padding:10px}}
 
 @media (max-width:560px){
@@ -293,7 +295,7 @@ table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 <main>
   <div class="view on" id="v-queue">
-    <h2>Review queue</h2>
+    <h2>Review queue <button class="btn sm ghost" id="addManualBtn" style="vertical-align:middle;margin-left:8px">+ Add job manually</button></h2>
     <p class="hint">Everything worth a look. Comp and knockout flags are shown, not filtered out — you decide what's worth the time.</p>
     <div class="chips-f" id="qfilters">
       <button data-f="all" aria-pressed="true">All <span class="ct"></span></button>
@@ -498,6 +500,33 @@ table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   <div class="mhead"><h3 id="clTitle">Cover letter sandbox</h3>
     <div><button class="btn sm ghost" id="clClose">Close</button></div></div>
   <div class="mbody" id="clBody"></div>
+</div></div>
+<div class="mask" id="addMask"><div class="modal" style="max-width:640px">
+  <div class="mhead"><h3>Add a job manually</h3>
+    <div><button class="btn sm ghost" id="addClose">Close</button></div></div>
+  <div class="mbody">
+    <p class="hint" style="margin:0 0 14px">For a job you found yourself, outside TheirStack — 0 credits. Runs through the same filter and scoring as anything ingested automatically, and lands in queue, watchlist, or archived on the same terms.</p>
+    <label class="flabel">Job title *</label>
+    <input type="text" id="addTitle" class="finput" placeholder="Business Operations Generalist">
+    <label class="flabel">Company</label>
+    <input type="text" id="addCompany" class="finput" placeholder="Unknown if not given">
+    <label class="flabel">Posting URL *</label>
+    <input type="text" id="addUrl" class="finput" placeholder="https://...">
+    <label class="flabel">Location</label>
+    <input type="text" id="addLocation" class="finput" placeholder="e.g. United States, Remote">
+    <label class="flabel">Remote?</label>
+    <select id="addRemote" class="finput">
+      <option value="">Not stated</option>
+      <option value="true">Remote</option>
+      <option value="false">Not remote</option>
+    </select>
+    <label class="flabel">Job description *</label>
+    <textarea id="addJdText" class="finput" rows="8" placeholder="Paste the full JD text here"></textarea>
+    <div style="margin-top:14px;display:flex;gap:8px">
+      <button class="btn sm go" id="addSubmit">Add and score</button>
+      <button class="btn sm ghost" id="addCancel">Cancel</button>
+    </div>
+  </div>
 </div></div>
 <div class="toast" id="toast"></div>
 
@@ -1007,6 +1036,39 @@ document.addEventListener('click',e=>{
     })();
     return}
 
+  if(e.target.id==='addManualBtn'){
+    ['addTitle','addCompany','addUrl','addLocation','addJdText'].forEach(id=>$('#'+id).value='');
+    $('#addRemote').value='';
+    $('#addMask').classList.add('on');
+    return}
+  if(e.target.id==='addClose'||e.target.id==='addCancel'||e.target.id==='addMask'){$('#addMask').classList.remove('on');return}
+  if(e.target.id==='addSubmit'){
+    const title=$('#addTitle').value.trim(), url=$('#addUrl').value.trim(), jd_text=$('#addJdText').value.trim();
+    if(!title||!url||!jd_text){toast('Title, URL, and job description are required');return}
+    const remoteVal=$('#addRemote').value;
+    const payload={
+      title, url, jd_text,
+      company:$('#addCompany').value.trim()||undefined,
+      location:$('#addLocation').value.trim()||undefined,
+      remote: remoteVal===''?undefined:remoteVal==='true',
+    };
+    e.target.disabled=true; e.target.textContent='Scoring…';
+    (async()=>{
+      try{
+        const resp=await fetch('/api/postings/manual',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+        if(!resp.ok){const err=await resp.json().catch(()=>({detail:'failed'}));
+          toast(`Failed: ${err.detail||resp.status}`);
+          e.target.disabled=false;e.target.textContent='Add and score';return}
+        const body=await resp.json();
+        $('#addMask').classList.remove('on');
+        toast(body.status==='archived'?'Added — scored below the queue threshold, check Watchlist/archive':'Added and scored');
+        e.target.disabled=false;e.target.textContent='Add and score';
+        await reloadPostings();
+      }catch(err){toast('Failed — see console');console.error('manual add failed:',err);
+        e.target.disabled=false;e.target.textContent='Add and score';}
+    })();
+    return}
+
   const sb=e.target.dataset.sandbox;
   if(sb){openCoverLetterSandbox(+sb);return}
   if(e.target.id==='clClose'||e.target.id==='clMask'){$('#clMask').classList.remove('on');return}
@@ -1096,7 +1158,7 @@ document.addEventListener('change',e=>{
   const nt=e.target.dataset.nt;
   if(nt){patchApplication(nt,{notes:e.target.value});}
 });
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){$('#mask').classList.remove('on');$('#clMask').classList.remove('on')}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){$('#mask').classList.remove('on');$('#clMask').classList.remove('on');$('#addMask').classList.remove('on')}});
 
 // ---------------- settings ----------------
 // Real defaults until /api/settings responds — loadLiveData() below overwrites these.
