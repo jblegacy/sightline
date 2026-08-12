@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 from docx import Document as DocxDocument
 
 from sightline.cover_letter import (
+    CLOSING_LINE,
     build_user_content,
     generate_cover_letter,
     greeting_for,
@@ -59,7 +60,11 @@ def test_generate_cover_letter_only_grounds_in_verified_bullets():
     )
     text, cost = generate_cover_letter(fake_client, POSTING, SCORE, BULLETS, ["BL-001"])
 
-    assert text == "Paragraph one, with enough real content to clear the length floor.\n\nParagraph two."
+    expected_close = CLOSING_LINE.format(company="Convergent Research")
+    assert text == (
+        "Paragraph one, with enough real content to clear the length floor.\n\n"
+        f"Paragraph two.\n\n{expected_close}"
+    )
     assert cost == 0.015
     sent_system = fake_client.chat_call.call_args.kwargs["system"]
     assert "Built the automation platform." in sent_system
@@ -98,9 +103,23 @@ def test_generate_cover_letter_works_without_answers():
     fake_client = MagicMock()
     fake_client.chat_call.return_value = ("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", 0.01)
     text, cost = generate_cover_letter(fake_client, POSTING, SCORE, BULLETS, ["BL-001"])
-    assert text == "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    expected_close = CLOSING_LINE.format(company="Convergent Research")
+    assert text == f"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n\n{expected_close}"
     sent_system = fake_client.chat_call.call_args.kwargs["system"]
     assert "(none available)" in sent_system
+
+
+def test_generate_cover_letter_appends_fixed_closing_line_not_model_generated():
+    # The close used to be model-written and would sometimes invent a
+    # follow-up commitment ("I'll follow up next week") the candidate has no
+    # intention of keeping — confirmed live as unwanted. It's now fixed,
+    # confirmed-good wording the model never sees or writes, only the
+    # company name varies.
+    fake_client = MagicMock()
+    fake_client.chat_call.return_value = ("Body text with enough length to clear the floor check.", 0.01)
+    text, _ = generate_cover_letter(fake_client, POSTING, SCORE, BULLETS, ["BL-001"])
+    assert text.endswith(CLOSING_LINE.format(company="Convergent Research"))
+    assert "Body text with enough length to clear the floor check." in text
 
 
 def test_generate_cover_letter_separates_selected_from_other_bullets():
