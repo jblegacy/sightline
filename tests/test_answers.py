@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock
 
 from sightline.answers import build_system_prompt, chat_reply, next_ref
+from sightline.voice import VOICE_RULES
 
 VERIFIED_BULLET = {
     "ref": "BL-001", "text": "Built the thing.", "status": "verified",
@@ -26,6 +27,15 @@ def test_build_system_prompt_includes_only_ready_or_verified_answers():
     prompt = build_system_prompt([], [READY_ANSWER, DRAFT_ANSWER], None)
     assert "The failure story." in prompt
     assert "NEEDS INPUT placeholder" not in prompt
+
+
+def test_build_system_prompt_includes_voice_rules():
+    # Found live: answers.py never wired VOICE_RULES in at all, so replies
+    # used markdown bold and other tells the cover letter prompt already
+    # bans — this is the same voice discipline, applied here too.
+    prompt = build_system_prompt([], [], None)
+    assert VOICE_RULES in prompt
+    assert "no markdown formatting" in prompt.lower() or "**bold**" in prompt
 
 
 def test_build_system_prompt_includes_posting_context_when_given():

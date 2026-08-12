@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from sightline.anthropic_client import AnthropicClient
+from sightline.voice import VOICE_RULES, voice_reference
 
 MODEL = "claude-sonnet-5"
 
@@ -23,6 +24,11 @@ or writing around it with vague language.
 This is collaborative drafting, not one-shot generation — propose a draft, then revise based on \
 what the candidate tells you. Match the voice of the existing answers below: specific, concrete, \
 no corporate throat-clearing, no invented enthusiasm.
+
+{voice_rules}
+
+VOICE REFERENCE (candidate's own writing):
+{voice_reference}
 
 VERIFIED RESUME BULLETS:
 {bullets}
@@ -59,6 +65,7 @@ def build_system_prompt(
             f"\nJD excerpt: {jd_excerpt}"
         )
     return SYSTEM_PROMPT.format(
+        voice_rules=VOICE_RULES, voice_reference=voice_reference(answers),
         bullets=_format_bullets(bullets), answers=_format_answers(answers),
         posting_context=posting_context,
     )
