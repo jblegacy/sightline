@@ -17,8 +17,12 @@
   --display:'Archivo',system-ui,sans-serif;
   --body:'IBM Plex Sans',system-ui,sans-serif;
   --mono:'IBM Plex Mono',ui-monospace,monospace;
+  --radius:8px;
 }
-*{box-sizing:border-box}
+*{box-sizing:border-box;border-radius:var(--radius)}
+/* full-bleed layout chrome — a rounded corner on something that touches the
+   viewport edge (or a full-screen dimmer) reads as a bug, not a style */
+body,header,nav,.demo,.mask{border-radius:0}
 body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--body);font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
 .label{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--muted)}
 .mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
@@ -281,6 +285,7 @@ table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   <div class="brandrow">
     <span class="brand">Sightline</span>
     <span class="runinfo"><span class="dot"></span><span id="runinfo-text">Loading…</span></span>
+    <form method="post" action="/logout" style="margin-left:auto"><button class="btn sm ghost" type="submit">Sign out</button></form>
   </div>
   <nav role="tablist">
     <button role="tab" aria-selected="true" data-v="queue">Queue <span class="ct" id="c-queue">0</span></button>
@@ -531,6 +536,18 @@ table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 <div class="toast" id="toast"></div>
 
 <script>
+// Session cookie can expire (or the password can rotate, which invalidates
+// every existing session — see sightline/auth.py) while this page is still
+// open. Any API call that comes back 401 mid-session means "not logged in
+// anymore" — bounce to the login page instead of leaving the SPA silently
+// broken.
+const _fetch=window.fetch;
+window.fetch=async(...args)=>{
+  const resp=await _fetch(...args);
+  if(resp.status===401 && !String(args[0]).startsWith('/login')){location.href='/login';}
+  return resp;
+};
+
 const DIMS=[['Role fit',25],['Evidence overlap',20],['Seniority & scope',15],['Remote authenticity',15],['Comp signal',15],['Company & stage',10],['Red flags',-30]];
 
 // Bullet selection now happens server-side — see sightline/assembly.py. Approve calls /api/postings/{id}/assemble.

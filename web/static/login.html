@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sightline — Sign in</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#16202B; --ground:#E9EDF1; --panel:#FBFCFD; --panel2:#F2F5F7;
+  --rule:#C0CAD3; --rule-soft:#D9E0E6; --muted:#5C6A77;
+  --auto:#1F6B5C; --auto-soft:#D5E4E0;
+  --gate:#B26A00; --gate-soft:#F2E3C8;
+  --done:#2C5578; --stop:#8C3A2E;
+  --display:'Archivo',system-ui,sans-serif;
+  --body:'IBM Plex Sans',system-ui,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;
+  --radius:8px;
+}
+*{box-sizing:border-box;border-radius:var(--radius)}
+body{border-radius:0;margin:0;background:var(--ground);color:var(--ink);font-family:var(--body);font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased;
+  min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+:focus-visible{outline:2px solid var(--gate);outline-offset:2px}
+.card{background:var(--panel);border:1px solid var(--rule);max-width:360px;width:100%;padding:28px 26px}
+.brand{font-family:var(--display);font-weight:800;font-size:1.3rem;letter-spacing:-.02em;margin:0 0 4px}
+.hint{color:var(--muted);font-size:12.5px;margin:0 0 22px}
+.flabel{display:block;font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:14px 0 4px}
+.finput{width:100%;font-family:var(--body);font-size:13.5px;padding:8px 9px;border:1px solid var(--rule);background:#fff;color:var(--ink)}
+.err{background:var(--gate-soft);border-left:3px solid var(--gate);color:var(--ink);font-size:12.5px;padding:9px 11px;margin:16px 0 0}
+button.go{width:100%;margin-top:20px;background:var(--ink);color:#fff;border:0;padding:10px;font-family:var(--body);font-weight:600;font-size:13.5px;cursor:pointer}
+button.go:hover{background:#26333f}
+</style>
+</head>
+<body>
+  <form class="card" method="post" action="/login">
+    <p class="brand">Sightline</p>
+    <p class="hint">Sign in to continue.</p>
+    <label class="flabel" for="username">Username</label>
+    <input class="finput" type="text" id="username" name="username" autocomplete="username" autofocus required>
+    <label class="flabel" for="password">Password</label>
+    <input class="finput" type="password" id="password" name="password" autocomplete="current-password" required>
+    {ERROR_BLOCK}
+    <button class="go" type="submit">Sign in</button>
+  </form>
+</body>
+</html>
