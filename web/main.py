@@ -15,7 +15,7 @@ from fastapi import Depends, FastAPI, Form, HTTPException, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from starlette.concurrency import run_in_threadpool
 
-from sightline.answers import chat_reply, next_ref
+from sightline.answers import chat_reply, next_ref, slugify_question
 from sightline.anthropic_client import AnthropicClient
 from sightline.assembly import assemble, variant_detail
 from sightline.auth import SESSION_COOKIE, SESSION_MAX_AGE_SECONDS, make_session_token, verify_session_token
@@ -617,7 +617,18 @@ def api_answers_chat(
     bullets = db.get_bullets_full()
     answers = db.get_answers()
     reply, cost_usd = chat_reply(anthropic, bullets, answers, posting, messages)
-    return {"reply": reply, "cost_usd": round(cost_usd, 5)}
+
+    # The literal question just asked — the most recent user turn — feeds a
+    # deterministic slug suggestion so saving an answer doesn't require
+    # inventing a question_type by hand. No model call needed for this part.
+    last_question = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
+    existing_types = [a["question_type"] for a in answers]
+    suggested_question_type = slugify_question(last_question, existing_types) if last_question else None
+
+    return {
+        "reply": reply, "cost_usd": round(cost_usd, 5),
+        "suggested_question_type": suggested_question_type,
+    }
 
 
 @app.post("/api/answers/save", dependencies=[Depends(require_auth)])
@@ -634,12 +645,28 @@ def api_answers_save(body: dict[str, Any], db: SightlineDB = Depends(get_db)) ->
     saved = db.upsert_answer({
         "ref": ref,
         "question_type": question_type,
+        "question_text": body.get("question_text"),
+        "posting_id": body.get("posting_id"),
         "text": text,
         "tags": body.get("tags") or [],
         "status": body.get("status") or "ready",
     })
     db.log_event(entity_type="answer", event="saved", payload={"ref": ref, "question_type": question_type})
     return saved
+
+
+@app.post("/api/answers/{ref}/mark-used", dependencies=[Depends(require_auth)])
+def api_answers_mark_used(ref: str, db: SightlineDB = Depends(get_db)) -> dict:
+    """Reusing an existing saved answer for a new application, as-is or
+    lightly adapted, without changing its saved content — see
+    db.mark_answer_used. Distinct from /api/answers/save, which is for when
+    the text itself changed."""
+    try:
+        updated = db.mark_answer_used(ref)
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    db.log_event(entity_type="answer", event="reused", payload={"ref": ref})
+    return updated
 
 
 @app.post("/webhooks/theirstack")

@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock
 
-from sightline.answers import build_system_prompt, chat_reply, next_ref
+from sightline.answers import build_system_prompt, chat_reply, next_ref, slugify_question
 from sightline.voice import VOICE_RULES
 
 VERIFIED_BULLET = {
@@ -72,3 +72,50 @@ def test_next_ref_extends_existing_a_namespace():
 
 def test_next_ref_starts_at_a1_when_empty():
     assert next_ref([]) == "A1"
+
+
+# ---- resemblance surfacing + question_text ----
+
+
+def test_build_system_prompt_includes_question_text_when_present():
+    answer_with_question = {
+        "ref": "A7", "question_type": "learning_fast", "status": "ready",
+        "text": "The failure story.", "question_text": "Tell me about a time you learned something fast.",
+    }
+    prompt = build_system_prompt([], [answer_with_question], None)
+    assert "Tell me about a time you learned something fast." in prompt
+
+
+def test_build_system_prompt_instructs_explicit_resemblance_callout():
+    prompt = build_system_prompt([], [], None)
+    assert "say so explicitly" in prompt.lower()
+
+
+# ---- slugify_question: deterministic question_type suggestion ----
+
+
+def test_slugify_question_basic():
+    result = slugify_question("Tell me about a time you learned something quickly.")
+    assert result == "time_learned_something_quickly"
+
+
+def test_slugify_question_strips_punctuation_and_stopwords():
+    result = slugify_question("How would you help someone understand Generative AI?")
+    assert result == "would_help_someone_understand_generative_ai"
+    assert "?" not in result
+
+
+def test_slugify_question_caps_word_count():
+    long_q = "Tell me about a time you facilitated a change or adoption journey across a whole department"
+    result = slugify_question(long_q, max_words=4)
+    assert len(result.split("_")) <= 4
+
+
+def test_slugify_question_avoids_collision_with_existing_types():
+    existing = ["time_learned_something_quickly"]
+    result = slugify_question("Tell me about a time you learned something quickly.", existing_types=existing)
+    assert result == "time_learned_something_quickly_2"
+
+
+def test_slugify_question_empty_after_stopword_removal_falls_back():
+    assert slugify_question("How do you?") == "question"

@@ -1041,6 +1041,52 @@ def test_api_answers_save_updates_existing_ref(client, fake_db):
     assert len(fake_db.answers) == 1  # updated in place, not duplicated
 
 
+def test_api_answers_save_stores_question_text_and_posting_id(client, fake_db):
+    posting_id = _seed_scored_posting(client)
+    resp = client.post(
+        "/api/answers/save",
+        json={
+            "question_type": "learned_fast", "text": "The answer.",
+            "question_text": "Tell me about learning something fast.", "posting_id": posting_id,
+        },
+        auth=(DASH_USER, DASH_PASS),
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["question_text"] == "Tell me about learning something fast."
+    assert body["posting_id"] == posting_id
+
+
+def test_api_answers_chat_returns_suggested_question_type(client):
+    resp = client.post(
+        "/api/answers/chat",
+        json={"messages": [{"role": "user", "content": "Tell me about a time you learned something quickly."}]},
+        auth=(DASH_USER, DASH_PASS),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["suggested_question_type"] == "time_learned_something_quickly"
+
+
+def test_api_answers_mark_used_requires_auth(raw_client):
+    resp = raw_client.post("/api/answers/A1/mark-used", json={})
+    assert resp.status_code == 401
+
+
+def test_api_answers_mark_used_bumps_usage(client, fake_db):
+    fake_db.answers.append({"ref": "A9", "question_type": "x", "text": "x", "status": "ready", "times_used": 2})
+    resp = client.post("/api/answers/A9/mark-used", json={}, auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["times_used"] == 3
+    assert body["last_used_at"]
+    assert any(e["event"] == "reused" for e in fake_db.events)
+
+
+def test_api_answers_mark_used_unknown_ref_404s(client):
+    resp = client.post("/api/answers/nonexistent/mark-used", json={}, auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 404
+
+
 # ---- metrics ----
 
 

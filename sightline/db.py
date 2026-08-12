@@ -3,6 +3,7 @@ so this works from anywhere, including sandboxes that block non-443 ports.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import quote
 
@@ -349,6 +350,34 @@ class SightlineDB:
             "/answers", params={"on_conflict": "ref"},
             headers={"Prefer": "resolution=merge-duplicates,return=representation"},
             json=fields,
+        )
+        resp.raise_for_status()
+        return resp.json()[0]
+
+    def mark_answer_used(self, ref: str) -> dict[str, Any]:
+        """Bumps times_used/last_used_at (migration 0002 columns, unused
+        until now) — called when an existing saved answer gets reused for a
+        new application, as opposed to upsert_answer's "content changed"
+        case. posting_id on the answer row stays the one it was first
+        established for; this only tracks ongoing reuse, not provenance.
+        Read-then-write, not a single atomic increment — PostgREST has no
+        "set to current value + 1" in one call without a Postgres function,
+        and at personal-tool traffic a lost update here is a rounding error,
+        not a real risk."""
+        resp = self._client.get("/answers", params={"ref": f"eq.{ref}", "select": "times_used"})
+        resp.raise_for_status()
+        rows = resp.json()
+        if not rows:
+            raise LookupError(f"answer {ref!r} not found")
+        current = rows[0].get("times_used") or 0
+
+        resp = self._client.patch(
+            "/answers", params={"ref": f"eq.{ref}"},
+            headers={"Prefer": "return=representation"},
+            json={
+                "times_used": current + 1,
+                "last_used_at": datetime.now(timezone.utc).isoformat(),
+            },
         )
         resp.raise_for_status()
         return resp.json()[0]
