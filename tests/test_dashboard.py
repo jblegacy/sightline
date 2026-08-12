@@ -3,6 +3,8 @@ from datetime import datetime, timedelta, timezone
 from sightline.dashboard import (
     _age_string,
     _dimensions_array,
+    archived_posting_to_row,
+    archived_postings_to_dashboard,
     posting_row_to_p,
     postings_to_dashboard_p,
     settings_to_cfg_qv,
@@ -178,3 +180,43 @@ def test_search_profiles_to_dashboard_shape():
         "variant": "engineer", "budgetShare": 0.6,
     }
     assert out[1]["id"] == "cpg"
+
+
+def test_archived_posting_to_row_with_score_can_restore():
+    row = {
+        "id": 42, "title": "Ops Analyst", "url": "https://example.com/job",
+        "first_seen_at": datetime.now(timezone.utc).isoformat(),
+        "status": "expired", "filter_reason": "archived by user",
+        "companies": {"name": "Acme Robotics"},
+        "scores": [SAMPLE_SCORE],
+    }
+    out = archived_posting_to_row(row)
+    assert out == {
+        "id": 42, "co": "Acme Robotics", "ti": "Ops Analyst",
+        "url": "https://example.com/job", "score": 88, "status": "expired",
+        "reason": "archived by user", "age": out["age"], "canRestore": True,
+    }
+
+
+def test_archived_posting_to_row_without_score_cannot_restore():
+    row = {
+        "id": 43, "title": "Warehouse Lead", "url": None,
+        "first_seen_at": datetime.now(timezone.utc).isoformat(),
+        "status": "archived", "filter_reason": "not remote",
+        "companies": {"name": "Acme Robotics"},
+        "scores": [],
+    }
+    out = archived_posting_to_row(row)
+    assert out["score"] is None
+    assert out["canRestore"] is False
+
+
+def test_archived_postings_to_dashboard_maps_each_row():
+    rows = [
+        {"id": 1, "title": "A", "url": None, "first_seen_at": datetime.now(timezone.utc).isoformat(),
+         "status": "archived", "filter_reason": "", "companies": {}, "scores": []},
+        {"id": 2, "title": "B", "url": None, "first_seen_at": datetime.now(timezone.utc).isoformat(),
+         "status": "expired", "filter_reason": "", "companies": {}, "scores": []},
+    ]
+    out = archived_postings_to_dashboard(rows)
+    assert [r["id"] for r in out] == [1, 2]

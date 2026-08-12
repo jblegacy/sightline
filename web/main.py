@@ -28,7 +28,12 @@ from sightline.cover_letter import (
     greeting_for,
     render_cover_letter_docx,
 )
-from sightline.dashboard import postings_to_dashboard_p, search_profiles_to_dashboard, settings_to_cfg_qv
+from sightline.dashboard import (
+    archived_postings_to_dashboard,
+    postings_to_dashboard_p,
+    search_profiles_to_dashboard,
+    settings_to_cfg_qv,
+)
 from sightline.db import SightlineDB
 from sightline.ingest import handle_manual_add, handle_webhook_event
 from sightline.metrics import compute_metrics
@@ -166,6 +171,37 @@ def api_postings_manual(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     return {"id": posting["id"], "status": posting["status"]}
+
+
+@app.get("/api/postings/archived", dependencies=[Depends(require_auth)])
+def api_postings_archived(db: SightlineDB = Depends(get_db)) -> list[dict]:
+    """status='archived' (filtered out or below queue_min_score) and
+    status='expired' (job.closed, or the dashboard's own Archive button) —
+    queue-level Rejects aren't here, see /api/postings' stage='rejected'."""
+    rows = db.list_archived_postings()
+    return archived_postings_to_dashboard(rows)
+
+
+@app.post("/api/postings/{posting_id}/restore", dependencies=[Depends(require_auth)])
+def api_restore_posting(posting_id: int, db: SightlineDB = Depends(get_db)) -> dict:
+    """Undo for an archive/expire — puts the posting back to status='scored'
+    so it reappears in Queue or Watchlist on its existing score. A posting
+    the deterministic filter archived before it was ever scored has no score
+    to restore to; the dashboard doesn't offer Restore for those (see
+    canRestore in archived_posting_to_row), and this rejects it too rather
+    than silently producing a 'scored' row that renders as nothing."""
+    try:
+        posting = db.get_posting(posting_id)
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    if not posting.get("scores"):
+        raise HTTPException(
+            status_code=400,
+            detail="No score on file for this posting — re-add it from Queue → Add job manually instead.",
+        )
+    db.restore_posting_status(posting_id)
+    db.log_event(entity_type="posting", entity_id=posting_id, event="restored_by_user")
+    return {"ok": True}
 
 
 @app.get("/api/settings", dependencies=[Depends(require_auth)])

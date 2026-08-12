@@ -171,6 +171,32 @@ def posting_row_to_p(row: dict[str, Any], co_count: int) -> dict[str, Any] | Non
     }
 
 
+def archived_posting_to_row(row: dict[str, Any]) -> dict[str, Any]:
+    """One archived/expired `postings` row -> a lightweight Archived-tab row.
+    Unlike posting_row_to_p, this tolerates no score at all — a pre-score
+    deterministic-filter archive (not remote, location-restricted, expired)
+    never got one, and the Archived tab needs to show those too, just
+    without a Restore option (see web/main.py's restore endpoint)."""
+    scores = row.get("scores") or []
+    score = scores[0] if scores else None
+    company = row.get("companies") or {}
+    return {
+        "id": row["id"],
+        "co": company.get("name", "Unknown"),
+        "ti": row["title"],
+        "url": row.get("url"),
+        "score": score["total"] if score else None,
+        "status": row["status"],  # archived | expired
+        "reason": row.get("filter_reason") or "",
+        "age": _age_string(row["first_seen_at"]),
+        "canRestore": score is not None,
+    }
+
+
+def archived_postings_to_dashboard(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [archived_posting_to_row(r) for r in rows]
+
+
 def postings_to_dashboard_p(rows: list[dict[str, Any]], score_threshold: int) -> list[dict[str, Any]]:
     co_counts = Counter(r["company_id"] for r in rows if r.get("company_id"))
     result = []
