@@ -49,8 +49,9 @@ outright — e.g. documentation and playbook-building work is legitimate evidenc
 category even if the original bullet wasn't literally about training employees. Never fabricate \
 a connection that isn't defensible, but look hard before deciding one doesn't exist. Each line \
 starts with "- ", is one line, no sub-clauses, and stays under about 30 words.
-5. Close — ONE sentence: a value statement plus an open door (offer to share more), not a repeat \
-of what you just said.""",
+5. Do not write a closing sentence, sign-off, or "looking forward to..." line — the letter body \
+ends right after the last bullet line. A fixed closing line is appended separately afterward; \
+writing your own here would duplicate it.""",
     "compressed": """Structure, in this order — this is the shortest of the three formats, HARD \
 CAP 160 words total, no padding. Length discipline is the entire point of this format, which \
 means it does NOT attempt full category coverage — that's what Traditional and Warm are for:
@@ -63,9 +64,9 @@ category (see "show your work" above). Do not add a second anecdote, even a shor
 what breaks the word cap.
 3. ONE more sentence — one additional concrete strength or credibility marker, still prose, not \
 its own multi-sentence paragraph.
-4. Close — ONE sentence, forward-looking, and name how you can be reached even though it's \
-already in the header — that inline contact line is what makes the shortest letters read as a \
-direct note rather than a formatted document.
+4. Do not write a closing sentence, sign-off, or "looking forward to..." line — the letter body \
+ends right after step 3. A fixed closing line is appended separately afterward; writing your own \
+here would duplicate it.
 If a draft would run over 160 words, cut the credibility-marker sentence (step 3) before cutting \
 anything else.""",
     "warm": """Structure, in this order — target 180-240 words total:
@@ -75,9 +76,9 @@ not a free pick of your best wins. Each line connects your closest matching veri
 to that category's actual ask (see "show your work" above). If a category has no strong direct \
 match, use the closest honest, defensible connection rather than skipping it outright. Each line \
 starts with "- ", is one line, no sub-clauses, and stays under about 30 words.
-3. Close — ONE to two sentences: confident and forward-looking, naming a concrete next step \
-you'll personally take (e.g. following up by a specific point in time) rather than a vague \
-"looking forward to hearing from you".""",
+3. Do not write a closing sentence, sign-off, or "looking forward to..." line — the letter body \
+ends right after the last bullet line. A fixed closing line is appended separately afterward; \
+writing your own here would duplicate it.""",
 }
 
 STYLE_LABELS = {
@@ -89,7 +90,7 @@ STYLE_LABELS = {
 STYLE_DESCRIPTIONS = {
     "traditional": "Company-research beat + one line per JD category. Most formal, most complete.",
     "compressed": "Prose only, no bullets, one category only. Shortest — reads like a note.",
-    "warm": "One line per JD category + a concrete follow-up commitment.",
+    "warm": "One line per JD category, warm and casual throughout.",
 }
 
 STYLES = tuple(STYLE_STRUCTURES)
@@ -129,6 +130,27 @@ ground-up build this role's Business Process Analysis work needs") is what a cov
 that a resume can't. Every achievement you cite must connect explicitly to the category it's \
 standing in for — pull the connection from the JD's own language, and don't assume the reader \
 will draw the line themselves. Draw it for them, in the same sentence or line.
+
+The bridge is not optional for any line — every single one needs it, not just most of them. And \
+it has to be specific: name the actual thing from the JD (the initiative type, the population \
+served, the concrete deliverable, the specific challenge the posting names) — never a generic \
+abstraction like "the same instinct this role needs" or "exactly what this role is asking for." \
+If you can't find a genuine, specific bridge for a bullet, pick a different verified bullet \
+instead of letting that line stand without one or reaching for a vague truism to fill the gap.
+
+Write plain, not corporate. No business-metaphor shorthand — "connective tissue," "move the \
+needle," "synergy," and similar — describe the actual work directly instead. Each line should \
+read as one clean sentence you'd say out loud in conversation: if it needs more than one \
+qualifying clause, restructure it as a straightforward sentence rather than stacking an \
+"including..." onto a "before/once..." onto the main clause — that's what makes a line hard to \
+parse in one pass.
+
+Whenever a structure below calls for a transition sentence, its grammatical subject must be the \
+candidate's own background, stated concretely — a real noun phrase for what you actually do \
+(e.g. "My background is building AI agent systems and the operational infrastructure around \
+them"), never the posting or the role ("This role requires...", "The posting moves through...", \
+"There are a few things this job is asking for..."). A transition sentence that describes the JD \
+instead of the candidate reads like a worksheet, not a person.
 
 State each achievement in your own words, in a natural, conversational register — never a copy \
 of the verified bullet's phrasing. The number, outcome, and claim must match a verified bullet \
@@ -196,6 +218,17 @@ Gaps to prepare for: {', '.join(score.get('unmet_requirements') or [])}
 Company signals: {', '.join(score.get('company_signals') or [])}"""
 
 
+# Fixed, not model-generated — confirmed live as the candidate's own wording
+# from a real cover letter he'd already sent. A model-written close kept
+# inventing follow-up commitments ("I'll follow up next week") the candidate
+# has no intention of keeping; this removes that risk entirely rather than
+# just steering the prompt away from it. Company name is the only variable.
+CLOSING_LINE = (
+    "I look forward to the opportunity to be a part of the {company} team – please feel free to "
+    "reach out if you have any questions. Looking forward to chatting!"
+)
+
+
 def greeting_for(score: dict[str, Any]) -> str:
     """Use a real named contact the scorer already extracted from the JD,
     rather than a generic "Dear Hiring Team" — personalizing the greeting
@@ -235,6 +268,8 @@ def _generate_styled(
     # cover letter and uploaded to storage — never let that happen quietly.
     if len(text) < 50:
         raise ValueError(f"cover letter generation returned no usable text ({len(text)} chars)")
+    company = (posting.get("companies") or {}).get("name", "this company")
+    text = f"{text}\n\n{CLOSING_LINE.format(company=company)}"
     return text, cost
 
 
