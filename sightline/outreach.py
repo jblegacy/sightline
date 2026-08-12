@@ -24,25 +24,42 @@ DRAFT_SYSTEM_PROMPT = """You write outreach drafts for a job candidate reaching 
 specific posting. The candidate copies these by hand into LinkedIn or their own email client — \
 nothing here is ever sent automatically, and you are not the one sending it.
 
+Model every draft on this confirmed, real example — the candidate sent it and wants every future \
+draft to have exactly this shape:
+"Hi Sri — just applied for the AI Enablement & Process Automation Lead role. Excited about the \
+chance to help bring Copilot adoption and workflow automation to life at Liquidity Services."
+
+That's the whole shape: a greeting by first name, a plain statement that you just applied — \
+naming the exact job title from the posting — and ONE short sentence of specific, concrete \
+excitement about the actual work. Nothing else. Short and to the point beats thorough here, \
+every time.
+
 Follow these rules exactly:
-1. Open with the company signal given, close to verbatim. Never write "I noticed you work at X."
-2. Reference exactly one metric: the bullet given below. Use its specific number or claim as \
-written — do not invent a different statistic and do not add a second metric.
-3. State what the candidate brings, not what they want.
-4. Close with a permission-based ask ("worth a 15-minute conversation?"). Never a calendar link, \
-never "apply here."
-5. Subject line: specific, under {subject_max_words} words, never "Seeking Opportunities" or \
-anything that reads like a bulk send.
+1. Open with "Hi [First name] —" then state plainly that you just applied for the exact job \
+title from the posting (use the posting's own title, not a paraphrase).
+2. ONE short sentence after that: specific, concrete excitement about the real work — what \
+you'd get to help with — tied to actual language from the JD or the company signal given. Not \
+generic ("excited about this opportunity"), specific ("excited to help automate X").
+3. No permission-based ask, no "worth a conversation," no calendar link. Applying and stating \
+real, specific interest IS the message — don't tack on a call-to-action the model example \
+doesn't have.
+4. The metric bullet given below is optional, not required. Use it only if it fits in one \
+additional short clause without breaking the short-and-sweet shape above — most of the time, \
+leave it out entirely, same as the model example.
+5. Subject line (email only): specific, under {subject_max_words} words, never "Seeking \
+Opportunities" or anything that reads like a bulk send.
 6. Plain text only — no HTML, no tracking language, no attachment mentioned.
-7. Write three variants: a LinkedIn connection note (well under {note_max_chars} characters — \
-LinkedIn's own cap), a longer LinkedIn message (around {message_max_words} words), and an email \
-body (around {email_max_words} words) with its own subject line. Sign as "James".
+7. Write three variants, ALL following the exact shape above (not three different structures — \
+one structure, three lengths): a LinkedIn connection note (well under {note_max_chars} \
+characters), a LinkedIn message (around {message_max_words} words — a sentence or two longer \
+than the note at most, never a different, longer pitch), and an email body (around \
+{email_max_words} words, same shape, with its own subject line). Sign as "James".
 
 {voice_rules}
 
-The note and subject line are too short for the sentence-rhythm rule above to apply — for those \
-two, prioritize the banned-word list, concrete nouns, and no conclusion-first opener. The message \
-and email body have room for the fuller rhythm.
+These are short enough that the sentence-rhythm rule above mostly doesn't apply — prioritize the \
+banned-word list, concrete nouns, and matching the model example's directness over rhythm \
+variation.
 
 None of these three drafts should name a gap, missing skill, or unmet requirement — this \
 overrides VOICE RULE 7 above. Outreach is part of applying, same as the cover letter; gaps get \
@@ -104,8 +121,8 @@ def generate_drafts(
     system = DRAFT_SYSTEM_PROMPT.format(
         subject_max_words=limits.get("email_subject_max_words", 10),
         note_max_chars=limits.get("linkedin_note_max_chars", 300),
-        message_max_words=limits.get("linkedin_message_max_words", 150),
-        email_max_words=limits.get("email_max_words", 80),
+        message_max_words=limits.get("linkedin_message_max_words", 60),
+        email_max_words=limits.get("email_max_words", 60),
         voice_rules=VOICE_RULES, voice_reference=voice_reference(answers or []),
     )
     user_content = f"""Target: {target_name}, {target_title or 'title unknown'}
@@ -171,8 +188,8 @@ def assemble_outreach(
     settings = db.get_settings()
     limits = {
         "linkedin_note_max_chars": settings.get("linkedin_note_max_chars", 300),
-        "linkedin_message_max_words": settings.get("linkedin_message_max_words", 150),
-        "email_max_words": settings.get("email_max_words", 80),
+        "linkedin_message_max_words": settings.get("linkedin_message_max_words", 60),
+        "email_max_words": settings.get("email_max_words", 60),
         "email_subject_max_words": settings.get("email_subject_max_words", 10),
     }
     answers = db.get_answers()

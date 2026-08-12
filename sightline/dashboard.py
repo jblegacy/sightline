@@ -109,10 +109,14 @@ def posting_row_to_p(row: dict[str, Any], co_count: int) -> dict[str, Any] | Non
     score = scores[0]
     company = row.get("companies") or {}
     variants = row.get("variants") or []
-    outreach = row.get("outreach") or []
-    # applications.posting_id is unique (migration 0016), so PostgREST embeds
-    # it as a to-one object, not an array like variants/outreach above.
+    # applications.posting_id (migration 0016) and outreach.posting_id
+    # (migration 0011) are both unique, so PostgREST embeds them as to-one
+    # objects, not arrays like variants above — found live: outreach was
+    # still being indexed as outreach[0], which KeyErrors on a dict the
+    # moment a posting actually has an outreach row (silent until now
+    # because no posting ever had one in production before).
     application = row.get("applications") or None
+    outreach = row.get("outreach") or None
     variant = variants[0] if variants else None
 
     company_name = company.get("name", "Unknown")
@@ -133,7 +137,7 @@ def posting_row_to_p(row: dict[str, Any], co_count: int) -> dict[str, Any] | Non
     return {
         "id": row["id"],
         "app": app,
-        "o": _outreach_to_o(outreach[0]) if outreach else None,
+        "o": _outreach_to_o(outreach) if outreach else None,
         "co": company.get("name", "Unknown"),
         "ti": row["title"],
         "url": row.get("url"),

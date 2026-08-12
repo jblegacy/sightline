@@ -647,6 +647,26 @@ def test_api_application_patch_mark_submitted_moves_to_applied(client, fake_db):
     assert p["app"]["sent"] == "2026-08-04T12:00:00+00:00"
 
 
+# ---- manual archive ----
+
+
+def test_api_archive_posting_requires_auth(client):
+    resp = client.post("/api/postings/1/archive", json={})
+    assert resp.status_code == 401
+
+
+def test_api_archive_posting_removes_it_from_postings_list(client, fake_db):
+    posting_id = _seed_scored_posting(client)
+    assert len(client.get("/api/postings", auth=(DASH_USER, DASH_PASS)).json()) == 1
+
+    resp = client.post(f"/api/postings/{posting_id}/archive", json={}, auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 200
+
+    remaining = client.get("/api/postings", auth=(DASH_USER, DASH_PASS)).json()
+    assert remaining == []
+    assert any(e["event"] == "archived_by_user" for e in fake_db.events)
+
+
 # ---- score override ----
 
 

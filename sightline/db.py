@@ -89,6 +89,24 @@ class SightlineDB:
         )
         resp.raise_for_status()
 
+    def archive_posting_by_id(self, posting_id: int, reason: str) -> None:
+        """Same effect as mark_posting_closed, but for the user's own manual
+        "archive this" click — pure judgment call, no auto-detection of
+        whether the listing is actually dead (deliberately not attempted;
+        the user can tell better than a URL check can). Keyed by our
+        internal id since that's what the dashboard already has, not
+        TheirStack's external_id. Zero TheirStack credits; this is a
+        queue-filter action (hide, don't delete, always reversible in the
+        data even with no undo button today) per CLAUDE.md's filter-layer
+        split, not a fetch-filter one."""
+        resp = self._client.patch(
+            "/postings",
+            params={"id": f"eq.{posting_id}"},
+            headers={"Prefer": "return=representation"},
+            json={"status": "expired", "filter_reason": reason},
+        )
+        resp.raise_for_status()
+
     def log_event(
         self,
         entity_type: str,
@@ -106,6 +124,19 @@ class SightlineDB:
             },
         )
         resp.raise_for_status()
+
+    def get_latest_event(self, events: list[str]) -> dict[str, Any] | None:
+        """Most recent row among the given event names — used to figure out
+        which of two possible states is currently "in effect" (e.g. was the
+        daily throttle or the monthly circuit breaker the last thing to
+        touch the search profiles) without a dedicated status column."""
+        resp = self._client.get(
+            "/events",
+            params={"event": f"in.({','.join(events)})", "order": "id.desc", "limit": "1"},
+        )
+        resp.raise_for_status()
+        rows = resp.json()
+        return rows[0] if rows else None
 
     def get_settings(self) -> dict[str, Any]:
         resp = self._client.get("/settings", params={"id": "eq.1", "select": "*"})

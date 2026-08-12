@@ -12,12 +12,20 @@ matches found while a webhook is disabled are queued and delivered (charged)
 in full the moment it's re-enabled. A real stop needs the saved search's
 alert deactivated too, which stops matching altogether.
 
-Neither breaker auto-re-enables. A daily-cap trip looks identical on
-TheirStack's side to a monthly trip (both profiles disabled) — auto-resuming
-at midnight risks the exact "queued matches delivered in full on re-enable"
-charge spike this module exists to prevent. Re-enabling is a deliberate
-human action from the dashboard, same as every other guardrail in this
-system stays human-in-the-loop.
+The monthly breaker never auto-re-enables — that's a real budget event and
+stays a deliberate human action from the dashboard, same as every other
+guardrail in this system stays human-in-the-loop.
+
+The daily throttle is different: see maybe_reset_daily_breaker. Revisited
+2026-08-10 after 5 days of silently stalled ingestion — a daily cap that
+never resets isn't actually daily, it's the monthly breaker with worse
+branding. The reactivation-burst risk is real but bounded by construction:
+at most one day's worth of newly-matching postings can have queued up
+(this account averages ~42/day), the same order of magnitude as the cap
+itself, not the unbounded historical backlog a long-stale search could
+otherwise dump. Resets lazily, the first time the app is touched after a
+new UTC day starts — there's no scheduled worker process in this codebase
+to fire it on a clock.
 """
 from __future__ import annotations
 
@@ -45,6 +53,18 @@ def _disable_all_profiles(theirstack: TheirStackClient) -> None:
         webhook = theirstack.find_webhook_for_search(saved_search["id"])
         if webhook and webhook.get("is_active"):
             theirstack.set_webhook_active(webhook["id"], False)
+
+
+def _enable_all_profiles(theirstack: TheirStackClient) -> None:
+    for profile_id in SEARCH_PROFILE_IDS:
+        saved_search = theirstack.find_saved_search(saved_search_name(profile_id))
+        if not saved_search:
+            continue
+        if not saved_search.get("is_alert_active"):
+            theirstack.set_saved_search_active(saved_search["id"], True)
+        webhook = theirstack.find_webhook_for_search(saved_search["id"])
+        if webhook and not webhook.get("is_active"):
+            theirstack.set_webhook_active(webhook["id"], True)
 
 
 def check_and_enforce_budget(
@@ -127,3 +147,29 @@ def check_and_enforce_daily_cap(
         payload={"used_today": today_usage, "daily_credit_cap": daily_credit_cap},
     )
     return {"tripped": True, "used_today": today_usage, "daily_credit_cap": daily_credit_cap}
+
+
+_BREAKER_EVENTS = ("daily_cap_tripped", "circuit_breaker_tripped", "daily_cap_reset")
+
+
+def maybe_reset_daily_breaker(theirstack: TheirStackClient, db: SightlineDB) -> dict[str, Any]:
+    """Auto-resumes ingestion the first time the app is touched on a new UTC
+    day, but only if the daily throttle — not the monthly circuit breaker —
+    is what's currently paused. See module docstring for why this one
+    resets and the monthly one doesn't. Call this from something the
+    dashboard hits on every load (e.g. GET /api/credits); there's no
+    scheduled worker in this codebase to call it on a clock instead."""
+    latest = db.get_latest_event(list(_BREAKER_EVENTS))
+    if not latest or latest["event"] != "daily_cap_tripped":
+        return {"reset": False, "reason": "not currently paused by the daily throttle"}
+
+    tripped_date = latest["created_at"][:10]
+    today = _dt.datetime.now(_dt.timezone.utc).date().isoformat()
+    if tripped_date >= today:
+        return {"reset": False, "reason": "still the same UTC day it tripped"}
+
+    _enable_all_profiles(theirstack)
+    db.log_event(
+        entity_type="budget", event="daily_cap_reset", payload={"tripped_at": latest["created_at"]}
+    )
+    return {"reset": True, "tripped_at": latest["created_at"]}
