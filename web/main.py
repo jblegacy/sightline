@@ -11,13 +11,13 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi import Depends, FastAPI, Form, HTTPException, Request, Response
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from sightline.answers import chat_reply, next_ref
 from sightline.anthropic_client import AnthropicClient
 from sightline.assembly import assemble, variant_detail
+from sightline.auth import SESSION_COOKIE, SESSION_MAX_AGE_SECONDS, make_session_token, verify_session_token
 from sightline.budget import maybe_reset_daily_breaker, used_today
 from sightline.config import Settings, get_settings
 from sightline.cover_letter import (
@@ -41,20 +41,23 @@ logger = logging.getLogger("sightline.web")
 
 app = FastAPI(title="Sightline")
 
-_basic_auth = HTTPBasic()
 
-
-def require_auth(
-    credentials: HTTPBasicCredentials = Depends(_basic_auth),
-    settings: Settings = Depends(get_settings),
-) -> None:
+def require_auth(request: Request, settings: Settings = Depends(get_settings)) -> None:
     """The dashboard exposes real company names, job descriptions, and comp
-    data on a public URL — this is not optional. Timing-safe comparisons per
-    FastAPI's own recommended pattern for HTTP Basic Auth."""
-    user_ok = secrets.compare_digest(credentials.username, settings.dashboard_username)
-    pass_ok = secrets.compare_digest(credentials.password, settings.dashboard_password)
-    if not (user_ok and pass_ok):
-        raise HTTPException(status_code=401, detail="Unauthorized", headers={"WWW-Authenticate": "Basic"})
+    data on a public URL — this is not optional. Session cookie set by
+    POST /login after verifying credentials; see sightline/auth.py. Replaced
+    HTTP Basic Auth's native browser popup with a real login page."""
+    token = request.cookies.get(SESSION_COOKIE)
+    if not token or not verify_session_token(token, settings):
+        raise HTTPException(status_code=401, detail="not authenticated")
+
+
+def _request_is_https(request: Request) -> bool:
+    """Railway (and most reverse proxies) terminate TLS upstream and forward
+    plain HTTP internally — request.url.scheme reports "http" in production
+    even though the browser is genuinely on an https:// page. Trust
+    X-Forwarded-Proto when present, matching what the proxy actually saw."""
+    return request.headers.get("x-forwarded-proto", request.url.scheme) == "https"
 
 
 @lru_cache
@@ -90,11 +93,54 @@ def health() -> dict[str, str]:
 
 
 _DASHBOARD_HTML = Path(__file__).parent / "static" / "dashboard.html"
+_LOGIN_HTML = Path(__file__).parent / "static" / "login.html"
 
 
-@app.get("/", dependencies=[Depends(require_auth)])
-def dashboard() -> FileResponse:
+@app.get("/")
+def dashboard(request: Request, settings: Settings = Depends(get_settings)) -> Response:
+    """Not gated by Depends(require_auth) — an unauthenticated visit here
+    should land on the login page, not a bare 401 JSON error. The API
+    routes still 401 directly; this is the one HTML entry point."""
+    token = request.cookies.get(SESSION_COOKIE)
+    if not token or not verify_session_token(token, settings):
+        return RedirectResponse(url="/login", status_code=303)
     return FileResponse(_DASHBOARD_HTML)
+
+
+@app.get("/login")
+def login_page() -> HTMLResponse:
+    return HTMLResponse(_LOGIN_HTML.read_text().replace("{ERROR_BLOCK}", ""))
+
+
+@app.post("/login")
+def login_submit(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    user_ok = secrets.compare_digest(username, settings.dashboard_username)
+    pass_ok = secrets.compare_digest(password, settings.dashboard_password)
+    if not (user_ok and pass_ok):
+        html = _LOGIN_HTML.read_text().replace(
+            "{ERROR_BLOCK}", '<p class="err">Incorrect username or password.</p>'
+        )
+        return HTMLResponse(html, status_code=401)
+
+    resp = RedirectResponse(url="/", status_code=303)
+    resp.set_cookie(
+        SESSION_COOKIE, make_session_token(settings),
+        max_age=SESSION_MAX_AGE_SECONDS, httponly=True, samesite="lax",
+        secure=_request_is_https(request),
+    )
+    return resp
+
+
+@app.post("/logout")
+def logout() -> Response:
+    resp = RedirectResponse(url="/login", status_code=303)
+    resp.delete_cookie(SESSION_COOKIE)
+    return resp
 
 
 @app.get("/api/postings", dependencies=[Depends(require_auth)])

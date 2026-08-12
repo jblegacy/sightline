@@ -5,6 +5,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
+from sightline.auth import SESSION_COOKIE
 from sightline.config import Settings
 from tests.test_ingest import SAMPLE_JOB, FakeAnthropic, FakeDB, FakeTheirStack
 from web.main import app, get_anthropic, get_db, get_theirstack
@@ -25,7 +26,10 @@ def fake_db():
 
 
 @pytest.fixture
-def client(fake_db):
+def raw_client(fake_db):
+    """Unauthenticated — no session cookie. Use this directly only for
+    testing the login flow itself or a "requires_auth" 401 check; every
+    other test wants `client`, which is pre-authenticated."""
     app.dependency_overrides[real_get_settings] = lambda: Settings(
         supabase_url="https://example.supabase.co",
         supabase_service_key="fake",
@@ -41,6 +45,18 @@ def client(fake_db):
     app.dependency_overrides[get_theirstack] = lambda: FakeTheirStack()
     yield TestClient(app)
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def client(raw_client):
+    """Logs in once via the real POST /login flow — the session cookie
+    TestClient gets back is then sent automatically on every subsequent
+    call, same as a real browser after a real login."""
+    login = raw_client.post(
+        "/login", data={"username": DASH_USER, "password": DASH_PASS}, follow_redirects=False
+    )
+    assert login.status_code == 303
+    return raw_client
 
 
 def test_health():
@@ -137,24 +153,48 @@ def test_webhook_returns_500_and_not_2xx_when_processing_raises(client):
 # ---- dashboard: auth + real data wiring ----
 
 
-def test_dashboard_requires_auth(client):
-    resp = client.get("/")
-    assert resp.status_code == 401
+def test_dashboard_requires_auth_redirects_to_login(raw_client):
+    resp = raw_client.get("/", follow_redirects=False)
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/login"
 
 
-def test_dashboard_rejects_wrong_password(client):
-    resp = client.get("/", auth=(DASH_USER, "wrong-password"))
-    assert resp.status_code == 401
-
-
-def test_dashboard_serves_html_with_correct_auth(client):
-    resp = client.get("/", auth=(DASH_USER, DASH_PASS))
+def test_login_page_renders(raw_client):
+    resp = raw_client.get("/login")
     assert resp.status_code == 200
     assert "text/html" in resp.headers["content-type"]
 
 
-def test_api_postings_requires_auth(client):
+def test_login_rejects_wrong_password(raw_client):
+    resp = raw_client.post("/login", data={"username": DASH_USER, "password": "wrong-password"})
+    assert resp.status_code == 401
+    assert SESSION_COOKIE not in raw_client.cookies
+
+
+def test_login_accepts_correct_credentials_and_sets_session_cookie(raw_client):
+    resp = raw_client.post(
+        "/login", data={"username": DASH_USER, "password": DASH_PASS}, follow_redirects=False
+    )
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/"
+    assert SESSION_COOKIE in raw_client.cookies
+
+
+def test_dashboard_serves_html_once_logged_in(client):
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers["content-type"]
+
+
+def test_logout_clears_the_session(client):
+    assert client.get("/api/postings").status_code == 200
+    client.post("/logout")
     resp = client.get("/api/postings")
+    assert resp.status_code == 401
+
+
+def test_api_postings_requires_auth(raw_client):
+    resp = raw_client.get("/api/postings")
     assert resp.status_code == 401
 
 
@@ -180,8 +220,8 @@ def test_api_postings_returns_scored_postings_in_p_shape(client, fake_db):
     assert len(p["d"]) == 7
 
 
-def test_api_settings_requires_auth(client):
-    resp = client.get("/api/settings")
+def test_api_settings_requires_auth(raw_client):
+    resp = raw_client.get("/api/settings")
     assert resp.status_code == 401
 
 
@@ -201,8 +241,8 @@ def test_api_settings_returns_qv_and_profiles_shape(client):
 # ---- settings write + preview + credits ----
 
 
-def test_api_settings_patch_requires_auth(client):
-    resp = client.patch("/api/settings", json={"queue_min_score": 60})
+def test_api_settings_patch_requires_auth(raw_client):
+    resp = raw_client.patch("/api/settings", json={"queue_min_score": 60})
     assert resp.status_code == 401
 
 
@@ -224,8 +264,8 @@ def test_api_settings_patch_shared_field_syncs_theirstack(client):
     # and didn't raise
 
 
-def test_api_search_profile_patch_requires_auth(client):
-    resp = client.patch("/api/search-profiles/automation", json={})
+def test_api_search_profile_patch_requires_auth(raw_client):
+    resp = raw_client.patch("/api/search-profiles/automation", json={})
     assert resp.status_code == 401
 
 
@@ -247,8 +287,8 @@ def test_api_search_profile_patch_unknown_profile_404s(client):
     assert resp.status_code == 404
 
 
-def test_api_preview_requires_auth(client):
-    resp = client.post("/api/preview", json={})
+def test_api_preview_requires_auth(raw_client):
+    resp = raw_client.post("/api/preview", json={})
     assert resp.status_code == 401
 
 
@@ -273,8 +313,8 @@ def test_api_preview_unknown_profile_400s(client):
     assert resp.status_code == 400
 
 
-def test_api_credits_requires_auth(client):
-    resp = client.get("/api/credits")
+def test_api_credits_requires_auth(raw_client):
+    resp = raw_client.get("/api/credits")
     assert resp.status_code == 401
 
 
@@ -310,8 +350,8 @@ MANUAL_FIELDS = {
 }
 
 
-def test_api_postings_manual_requires_auth(client):
-    resp = client.post("/api/postings/manual", json=MANUAL_FIELDS)
+def test_api_postings_manual_requires_auth(raw_client):
+    resp = raw_client.post("/api/postings/manual", json=MANUAL_FIELDS)
     assert resp.status_code == 401
 
 
@@ -343,8 +383,8 @@ def test_api_postings_manual_repeat_url_upserts_not_duplicates(client, fake_db):
     assert len(fake_db.postings) == 1
 
 
-def test_api_assemble_requires_auth(client):
-    resp = client.post("/api/postings/1/assemble", json={})
+def test_api_assemble_requires_auth(raw_client):
+    resp = raw_client.post("/api/postings/1/assemble", json={})
     assert resp.status_code == 401
 
 
@@ -377,8 +417,8 @@ def test_api_assemble_blocks_unverified_bullets_with_422(client, fake_db):
     assert "status=draft" in resp.json()["detail"]
 
 
-def test_api_variant_detail_requires_auth(client):
-    resp = client.get("/api/postings/1/variant")
+def test_api_variant_detail_requires_auth(raw_client):
+    resp = raw_client.get("/api/postings/1/variant")
     assert resp.status_code == 401
 
 
@@ -402,8 +442,8 @@ def test_api_variant_detail_restores_sections_and_fresh_signed_url(client, fake_
 # ---- cover letter ----
 
 
-def test_api_cover_letter_requires_auth(client):
-    resp = client.post("/api/postings/1/cover-letter", json={})
+def test_api_cover_letter_requires_auth(raw_client):
+    resp = raw_client.post("/api/postings/1/cover-letter", json={})
     assert resp.status_code == 401
 
 
@@ -464,8 +504,8 @@ def test_api_variant_detail_includes_cover_letter_signed_url_once_generated(clie
 # ---- cover letter sandbox (preview) ----
 
 
-def test_api_cover_letter_preview_requires_auth(client):
-    resp = client.post("/api/postings/1/cover-letter/preview", json={})
+def test_api_cover_letter_preview_requires_auth(raw_client):
+    resp = raw_client.post("/api/postings/1/cover-letter/preview", json={})
     assert resp.status_code == 401
 
 
@@ -561,8 +601,8 @@ def test_api_cover_letter_skips_feedback_event_when_no_note_given(client, fake_d
 # ---- outreach ----
 
 
-def test_api_outreach_requires_auth(client):
-    resp = client.post("/api/postings/1/outreach", json={})
+def test_api_outreach_requires_auth(raw_client):
+    resp = raw_client.post("/api/postings/1/outreach", json={})
     assert resp.status_code == 401
 
 
@@ -600,8 +640,8 @@ def test_api_outreach_blocks_unverified_metric_with_422(client, fake_db):
     assert resp.status_code == 422
 
 
-def test_api_outreach_sent_requires_auth(client):
-    resp = client.post("/api/postings/1/outreach/sent", json={})
+def test_api_outreach_sent_requires_auth(raw_client):
+    resp = raw_client.post("/api/postings/1/outreach/sent", json={})
     assert resp.status_code == 401
 
 
@@ -632,8 +672,8 @@ def test_api_outreach_sent_marks_sent(client, fake_db):
 # ---- applications ----
 
 
-def test_api_application_patch_requires_auth(client):
-    resp = client.patch("/api/postings/1/application", json={"status": "deferred"})
+def test_api_application_patch_requires_auth(raw_client):
+    resp = raw_client.patch("/api/postings/1/application", json={"status": "deferred"})
     assert resp.status_code == 401
 
 
@@ -695,8 +735,8 @@ def test_api_application_patch_mark_submitted_moves_to_applied(client, fake_db):
 # ---- manual archive ----
 
 
-def test_api_archive_posting_requires_auth(client):
-    resp = client.post("/api/postings/1/archive", json={})
+def test_api_archive_posting_requires_auth(raw_client):
+    resp = raw_client.post("/api/postings/1/archive", json={})
     assert resp.status_code == 401
 
 
@@ -715,8 +755,8 @@ def test_api_archive_posting_removes_it_from_postings_list(client, fake_db):
 # ---- score override ----
 
 
-def test_api_score_override_requires_auth(client):
-    resp = client.patch("/api/postings/1/score-override", json={"total": 78, "reason": "x"})
+def test_api_score_override_requires_auth(raw_client):
+    resp = raw_client.patch("/api/postings/1/score-override", json={"total": 78, "reason": "x"})
     assert resp.status_code == 401
 
 
@@ -775,8 +815,8 @@ def test_api_score_override_404_when_not_scored(client):
 # ---- answer workbench ----
 
 
-def test_api_answers_requires_auth(client):
-    resp = client.get("/api/answers")
+def test_api_answers_requires_auth(raw_client):
+    resp = raw_client.get("/api/answers")
     assert resp.status_code == 401
 
 
@@ -787,8 +827,8 @@ def test_api_answers_returns_list(client, fake_db):
     assert resp.json()[0]["ref"] == "A7"
 
 
-def test_api_answers_chat_requires_auth(client):
-    resp = client.post("/api/answers/chat", json={"messages": []})
+def test_api_answers_chat_requires_auth(raw_client):
+    resp = raw_client.post("/api/answers/chat", json={"messages": []})
     assert resp.status_code == 401
 
 
@@ -862,8 +902,8 @@ def test_api_answers_save_updates_existing_ref(client, fake_db):
 # ---- metrics ----
 
 
-def test_api_metrics_requires_auth(client):
-    resp = client.get("/api/metrics")
+def test_api_metrics_requires_auth(raw_client):
+    resp = raw_client.get("/api/metrics")
     assert resp.status_code == 401
 
 
