@@ -168,6 +168,13 @@ or frame yourself as seeing something about the job that they don't. Never compa
 other candidates ("further than most candidates," "unlike other applicants") — you have no idea \
 who else applied, and the claim reads as arrogant rather than as evidence.
 
+None of the instructions above change the document's shape. "Conversational register" and "read \
+like someone talking" describe the wording INSIDE each line, never a license to merge the \
+achievement list into a flowing paragraph. When the structure below calls for a bulleted list, \
+that means literally one line per achievement, each one starting with "- ", exactly as many \
+lines as there are categories — not folded into prose, not combined into fewer sentences, \
+regardless of how conversational each line's wording is.
+
 {structure}
 
 Never name a gap, missing skill, or unmet requirement anywhere in the letter — this overrides \
