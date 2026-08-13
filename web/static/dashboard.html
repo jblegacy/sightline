@@ -1716,8 +1716,12 @@ async function loadLiveData(){
     CFG=PROFILES.find(p=>p.id===ACTIVE)||{inc:[],exc:[]};
     setActiveProfile(ACTIVE);
     populateCriteriaForm(settings.raw);
-    const queueCt=P.filter(p=>p.stage==='queue').length, watchCt=P.filter(p=>p.stage==='watch').length;
-    runinfo.textContent=`${P.length} scored · ${queueCt} in queue (≥${SCORE_THRESHOLD}) · ${watchCt} on watchlist`;
+    const queueCt=P.filter(p=>p.stage==='queue').length;
+    // Watchlist count dropped from this line — with queue_min_score set
+    // above score_threshold (the common case), it's structurally always 0
+    // and reads as broken rather than informative. Still a real tab/stage
+    // in the UI, just not part of this summary.
+    runinfo.textContent=`${P.length} scored · ${queueCt} in queue (≥${SCORE_THRESHOLD})`;
   }catch(e){
     runinfo.textContent='Failed to load live data — see console';
     console.error('loadLiveData failed:',e);
