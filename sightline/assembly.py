@@ -10,7 +10,6 @@ from __future__ import annotations
 import io
 import math
 import re
-from datetime import datetime, timezone
 from typing import Any
 
 from docx import Document
@@ -462,9 +461,18 @@ def assemble(
     variant: str | None = None,
 ) -> dict[str, Any]:
     """Orchestrates Stage 4 for one posting: select bullets, gate on
-    provenance, render the .docx, upload it, generate the brief, and record
-    the variant. Raises ProvenanceError (not caught here) if any selected
-    bullet isn't shippable — assembly stops, it does not degrade."""
+    provenance, generate the prep brief, and record the variant row that
+    grounds the cover letter. Raises ProvenanceError (not caught here) if
+    any selected bullet isn't shippable — assembly stops, it does not
+    degrade.
+
+    No longer renders or uploads a per-posting resume .docx — the candidate
+    now maintains two static resumes by hand (one per variant) rather than
+    a bespoke build per JD, so `storage_path` is always None here. Selection
+    and the provenance gate still run: the cover letter and the brief both
+    need the same per-JD bullet relevance this used to also render into a
+    file. render_docx/VARIANT_CONTENT are left in place, just uncalled, in
+    case per-posting rendering ever comes back."""
     posting = db.get_posting(posting_id)
     scores = posting.get("scores") or []
     if not scores:
@@ -493,11 +501,6 @@ def assemble(
         )
         raise
 
-    docx_bytes = render_docx(variant, sections)
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    path = f"{posting_id}/{variant}-{timestamp}.docx"
-    db.upload_document(STORAGE_BUCKET, path, docx_bytes)
-
     brief, brief_cost = generate_brief(anthropic, posting, score)
 
     variant_row = db.insert_variant({
@@ -505,7 +508,7 @@ def assemble(
         "kind": variant,
         "bullet_refs": [b["ref"] for b in selected],
         "summary_key": f"{variant}-master",
-        "storage_path": path,
+        "storage_path": None,
         "brief": brief,
     })
     db.log_event(
@@ -517,60 +520,20 @@ def assemble(
             "brief_cost_usd": round(brief_cost, 5),
         },
     )
-    company_name = (posting.get("companies") or {}).get("name", "Unknown")
-    signed_url = db.create_signed_url(
-        STORAGE_BUCKET, path, download_filename=resume_download_name(company_name)
-    )
-    return {
-        **variant_row, "signed_url": signed_url, "sections": _serialize_sections(sections),
-        "jd_text": posting.get("jd_text"), "jd_keywords": score.get("keywords") or [],
-        "rationale": score.get("rationale") or "",
-    }
-
-
-def _serialize_sections(sections: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return [
-        {
-            "org": sec["org"],
-            "order": [
-                {"ref": b["ref"], "text": b["text"], "matched_keywords": b.get("matched_keywords") or []}
-                for b in sec["order"]
-            ],
-            "dropped": [
-                {"ref": b["ref"], "text": b["text"], "matched_keywords": b.get("matched_keywords") or []}
-                for b in sec["dropped"]
-            ],
-        }
-        for sec in sections
-    ]
+    return {**variant_row, "rationale": score.get("rationale") or ""}
 
 
 def variant_detail(db: SightlineDB, posting_id: int) -> dict[str, Any]:
-    """Read-only: recomputes the same selection view (pure, free) for an
-    already-assembled posting and mints a fresh signed URL. Used to restore
-    the diff view and download link after a page reload without re-running
-    Sonnet or re-uploading a new document — a fresh assemble() would also
-    cost money and create a second Storage object for no reason."""
+    """Read-only: restores the cover letter text/download link for an
+    already-assembled posting after a page reload, without another model
+    call. No resume file involved — see assemble()."""
     posting = db.get_posting(posting_id)
     variants = posting.get("variants") or []
     if not variants:
         raise LookupError(f"posting {posting_id} has no assembled variant")
     variant_row = variants[0]
-    scores = posting.get("scores") or []
-    score = scores[0] if scores else {}
 
-    bullets = db.get_bullets_full()
-    sections = select_bullets(bullets, variant_row["kind"], score.get("keywords") or [])
-    company_name = (posting.get("companies") or {}).get("name", "Unknown")
-    signed_url = db.create_signed_url(
-        STORAGE_BUCKET, variant_row["storage_path"], download_filename=resume_download_name(company_name)
-    )
     cover_letter_signed_url = None
     if variant_row.get("cover_letter_storage_path"):
         cover_letter_signed_url = db.create_signed_url(STORAGE_BUCKET, variant_row["cover_letter_storage_path"])
-    return {
-        **variant_row, "signed_url": signed_url, "sections": _serialize_sections(sections),
-        "jd_text": posting.get("jd_text"), "jd_keywords": score.get("keywords") or [],
-        "rationale": score.get("rationale") or "",
-        "cover_letter_signed_url": cover_letter_signed_url,
-    }
+    return {**variant_row, "cover_letter_signed_url": cover_letter_signed_url}

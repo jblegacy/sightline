@@ -37,8 +37,6 @@ a{color:var(--done)}
 header{background:var(--panel);border-bottom:1px solid var(--rule);padding:14px 22px 0}
 .brandrow{display:flex;align-items:baseline;gap:16px;flex-wrap:wrap;margin-bottom:14px}
 .brand{font-family:var(--display);font-weight:800;font-size:1.18rem;letter-spacing:-.02em}
-.runinfo{font-family:var(--mono);font-size:11px;color:var(--muted)}
-.dot{display:inline-block;width:7px;height:7px;background:var(--auto);border-radius:50%;margin-right:6px}
 nav{display:flex;gap:2px;flex-wrap:wrap}
 nav button{background:none;border:0;border-bottom:2px solid transparent;padding:9px 14px;font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
 nav button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--gate)}
@@ -236,26 +234,6 @@ table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mhead{background:var(--panel);border-bottom:1px solid var(--rule);padding:14px 18px;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;position:sticky;top:0}
 .mhead h3{font-family:var(--display);font-weight:600;font-size:1.02rem;margin:0}
 .mbody{padding:18px}
-.dcols{display:grid;grid-template-columns:1fr 1fr;gap:2px;background:var(--rule)}
-.dcol{background:var(--panel);padding:15px}
-.dcol h4{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;margin:0 0 4px;padding-bottom:9px;border-bottom:2px solid var(--rule)}
-.dcol.new h4{border-bottom-color:var(--gate);color:var(--gate)}
-.dsec{font-family:var(--mono);font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:var(--muted);margin:15px 0 7px;padding-bottom:4px;border-bottom:1px solid var(--rule-soft)}
-.db{font-size:12.5px;padding:7px 9px;margin-bottom:5px;border-left:3px solid var(--rule-soft);background:var(--panel2);position:relative}
-.db .ref{font-family:var(--mono);font-size:9.5px;color:var(--muted);letter-spacing:.06em;display:block;margin-bottom:2px}
-.db.kept{border-left-color:var(--auto)}
-.db.dropped{border-left-color:var(--rule);opacity:.42}
-.db.promoted{border-left-color:var(--gate);background:var(--gate-soft)}
-.mkw{font-family:var(--mono);font-size:10.5px;color:var(--auto);margin-top:4px}
-.mkw.none{color:var(--muted)}
-.jdbox{border:1px solid var(--rule);background:var(--panel2);padding:10px 12px;margin-bottom:10px}
-.jdbox summary{cursor:pointer;font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
-.jdbox[open] summary{margin-bottom:4px}
-.db .why{font-family:var(--mono);font-size:9.5px;color:var(--gate);letter-spacing:.05em;margin-top:4px;display:block}
-.dlegend{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:14px}
-.dlegend span{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10.5px;color:var(--muted)}
-.dlegend i{width:10px;height:10px;display:inline-block}
-.summarybox{background:var(--panel2);border-left:3px solid var(--gate);padding:9px 11px;font-size:12.5px;margin-bottom:6px}
 .clcols{display:grid;grid-template-columns:1fr 1fr 1fr;gap:2px;background:var(--rule)}
 .clcard{background:var(--panel);padding:15px;display:flex;flex-direction:column}
 .clcard h4{font-family:var(--display);font-weight:600;font-size:.98rem;margin:0 0 3px}
@@ -266,7 +244,7 @@ table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .notesin{width:100%;font-family:var(--body);font-size:12.5px;padding:5px 7px;border:1px solid var(--rule);background:var(--panel);min-height:30px}
 .flabel{display:block;font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:12px 0 4px}
 .finput{width:100%;font-family:var(--body);font-size:12.5px;padding:5px 7px;border:1px solid var(--rule);background:var(--panel);color:var(--ink)}
-@media (max-width:760px){.dcols{grid-template-columns:1fr}.mask{padding:10px}}
+@media (max-width:760px){.mask{padding:10px}}
 
 @media (max-width:560px){
   .target .f{grid-template-columns:1fr}
@@ -286,7 +264,6 @@ table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 <header>
   <div class="brandrow">
     <span class="brand">Sightline</span>
-    <span class="runinfo"><span class="dot"></span><span id="runinfo-text">Loading…</span></span>
     <form method="post" action="/logout" style="margin-left:auto"><button class="btn sm ghost" type="submit">Sign out</button></form>
   </div>
   <nav role="tablist">
@@ -305,12 +282,19 @@ table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   <div class="view on" id="v-queue">
     <h2>Review queue <button class="btn sm ghost" id="addManualBtn" style="vertical-align:middle;margin-left:8px">+ Add job manually</button></h2>
     <p class="hint">Everything worth a look. Comp and knockout flags are shown, not filtered out — you decide what's worth the time.</p>
-    <div class="chips-f" id="qfilters">
-      <button data-f="all" aria-pressed="true">All <span class="ct"></span></button>
-      <button data-f="clean" aria-pressed="false">Clean</button>
-      <button data-f="flagged" aria-pressed="false">Knockouts flagged</button>
-      <button data-f="target" aria-pressed="false">At target comp</button>
-      <button data-f="below" aria-pressed="false">Below floor</button>
+    <div style="display:flex;gap:10px;align-items:center;margin:0 0 14px">
+      <select id="qScoreFilter" class="finput" style="width:auto">
+        <option value="0">All scores</option>
+        <option value="60">60+</option>
+        <option value="70">70+</option>
+        <option value="80">80+</option>
+        <option value="90">90+</option>
+      </select>
+      <select id="qSortDir" class="finput" style="width:auto">
+        <option value="desc">Highest score first</option>
+        <option value="asc">Lowest score first</option>
+      </select>
+      <span class="ct" id="qfCount"></span>
     </div>
     <div id="queueRows"></div>
   </div>
@@ -324,6 +308,17 @@ table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   <div class="view" id="v-apps">
     <h2>Applications</h2>
     <p class="hint">What you sent, when, and which variant. Marking submitted sets a follow-up seven days out.</p>
+    <div style="display:flex;gap:10px;align-items:center;margin:0 0 14px">
+      <select id="appsSort" class="finput" style="width:auto">
+        <option value="newest">Newest first</option>
+        <option value="oldest">Oldest first</option>
+      </select>
+      <select id="appsFilter" class="finput" style="width:auto">
+        <option value="all">All</option>
+        <option value="submitted">Submitted</option>
+        <option value="notsubmitted">Not submitted</option>
+      </select>
+    </div>
     <div id="appsWrap"></div>
   </div>
 
@@ -512,11 +507,6 @@ table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   </div>
 </main>
 
-<div class="mask" id="mask"><div class="modal">
-  <div class="mhead"><h3 id="mtitle">Tailoring changes</h3>
-    <div><button class="btn sm" id="mdl">Download .docx</button> <button class="btn sm ghost" id="mclose">Close</button></div></div>
-  <div class="mbody" id="mbody"></div>
-</div></div>
 <div class="mask" id="clMask"><div class="modal">
   <div class="mhead"><h3 id="clTitle">Cover letter sandbox</h3>
     <div><button class="btn sm ghost" id="clClose">Close</button></div></div>
@@ -645,7 +635,7 @@ function rowHTML(p){
         </section>
         <section><h4>Actions</h4>
           <div class="acts">
-            ${p.stage==='queue'||p.stage==='watch'?`<button class="btn go" data-act="approve">Approve → build resume</button>
+            ${p.stage==='queue'||p.stage==='watch'?`<button class="btn go" data-act="approve">Approve</button>
             <button class="btn" data-act="defer">Defer</button>
             <button class="btn ghost" data-act="reject">Reject</button>
             <button class="btn ghost" data-act="override-score">${p.scoreOverride?'Change score override':'Override score'}</button>
@@ -660,7 +650,7 @@ function rowHTML(p){
   </div>`;
 }
 
-let QF='all';
+let Q_SCORE_FILTER=0, Q_SORT_DIR='desc';
 const isAiTitle=ti=>/\bA\.?I\.?\b/i.test(ti||'');
 
 function sectionHead(label,count,hint){
@@ -679,12 +669,8 @@ function drawQueue(){
     } else if(!QV.noSal) return false;
     return true;
   });
-  const f={clean:p=>p.ko.length===0,
-           flagged:p=>p.ko.length>0,
-           target:p=>compTier(p).k==='target',
-           below:p=>['under','low'].includes(compTier(p).k)}[QF];
-  const shown=f?q.filter(f):q;
-  shown.sort((a,b)=>b.score-a.score);
+  const shown=q.filter(p=>p.score>=Q_SCORE_FILTER);
+  shown.sort((a,b)=>Q_SORT_DIR==='desc'?b.score-a.score:a.score-b.score);
 
   const aiRoles=shown.filter(p=>isAiTitle(p.ti));
   const otherRoles=shown.filter(p=>!isAiTitle(p.ti));
@@ -693,7 +679,7 @@ function drawQueue(){
   if(otherRoles.length)html+=sectionHead('Other Roles',otherRoles.length)+otherRoles.map(rowHTML).join('');
   $('#queueRows').innerHTML=html||'<div class="empty">Nothing matches this filter.</div>';
   $('#c-queue').textContent=q.length;
-  $('#qfilters .ct').textContent=q.length;
+  $('#qfCount').textContent=`${shown.length} of ${q.length} shown`;
   drawWatch();
 }
 
@@ -732,44 +718,48 @@ function drawWatch(){
   $('#c-watch').textContent=w.length;
 }
 
+let APPS_SORT='newest', APPS_FILTER='all';
+const _ageHours=age=>{if(!age)return 0;return age.includes('h')?parseInt(age):parseInt(age)*24};
+
 function drawApps(){
-  const a=P.filter(p=>['approved','applied'].includes(p.stage));
+  let a=P.filter(p=>['approved','applied'].includes(p.stage));
   $('#c-apps').textContent=a.length;
-  if(!a.length){$('#appsWrap').innerHTML='<div class="empty">Nothing approved yet. Approve something in the queue.</div>';return}
+  if(APPS_FILTER==='submitted')a=a.filter(p=>!!(p.app&&p.app.sent));
+  else if(APPS_FILTER==='notsubmitted')a=a.filter(p=>!(p.app&&p.app.sent));
+  a=[...a].sort((x,y)=>{
+    const d=_ageHours(x.age)-_ageHours(y.age);
+    return APPS_SORT==='newest'?d:-d;
+  });
+  if(!a.length){$('#appsWrap').innerHTML='<div class="empty">Nothing matches. Approve something in the queue, or adjust the filter above.</div>';return}
   const STATUSES=['building','ready to submit','submitted','screen','interview','offer','rejected','ghosted'];
   $('#appsWrap').innerHTML=`<table class="grid"><thead><tr>
-    <th>Company</th><th>Role</th><th>Resume</th><th>Status</th><th>Submitted</th><th>Follow-up</th><th>Notes</th><th></th></tr></thead><tbody>
+    <th>Company</th><th>Role</th><th>Cover letter</th><th>Status</th><th>Submitted</th><th>Follow-up</th><th>Notes</th><th></th></tr></thead><tbody>
     ${a.map(p=>{const ap=p.app||{};
       const st=ap.status||'building';
       const overdue=ap.due&&ap.due<new Date().toISOString().slice(0,10);
       const pillCls={'submitted':'submitted','screen':'screen','interview':'interview','rejected':'rejected','ghosted':'ghosted'}[st]||'unsent';
       return `<tr data-id="${p.id}">
         <td><b>${esc(p.co)}</b><br><span class="tag ${p.v}">${esc(ap.variant||'')}</span></td>
-        <td>${esc(p.ti)}${p.url?` <a href="${esc(p.url)}" target="_blank" rel="noopener" class="srclink">View posting ↗</a>`:''} <a href="#" class="srclink" data-archive="${p.id}">Archive</a></td>
-        <td>${ap.file?`<a href="#" class="mono" data-dl="${p.id}" style="font-size:11.5px">${esc(ap.file)}</a> <span class="tag ${p.v}">${esc(ap.variant||'')}</span>
-             ${ap.finalFile?`<br><span class="cc">sent: ${esc(ap.finalFile)}</span>`:(ap.sent?'<br><span class="cc" style="color:var(--gate)">final not recorded</span>':'')}
-             <br><button class="btn sm ghost" data-diff="${p.id}" style="margin-top:4px">View changes</button>
-             <button class="btn sm ghost" data-regenresume="${p.id}" style="margin-top:4px">Regenerate resume</button>
-             ${ap.sent&&!ap.finalFile?`<button class="btn sm ghost" data-final="${p.id}" style="margin-top:4px">Record final</button>`:''}
-             <br>${ap.coverLetterFile?`<a href="#" class="mono" data-dlcl="${p.id}" style="font-size:11.5px">${esc(ap.coverLetterFile)}</a> <button class="btn sm ghost" data-covergen="${p.id}" style="margin-top:4px">Regenerate</button> <button class="btn sm ghost" data-editcl="${p.id}" style="margin-top:4px">Edit</button>`:`<button class="btn sm ghost" data-covergen="${p.id}" style="margin-top:4px">Generate cover letter</button>`}
-             <button class="btn sm ghost" data-sandbox="${p.id}" style="margin-top:4px">Sandbox</button>`:'<span class="cc">building\u2026</span>'}</td>
+        <td>${esc(p.ti)}${p.url?` <a href="${esc(p.url)}" target="_blank" rel="noopener" class="srclink">View posting ↗</a>`:''}</td>
+        <td>${ap.coverLetterFile?`<a href="#" class="mono" data-dlcl="${p.id}" style="font-size:11.5px">${esc(ap.coverLetterFile)}</a> <button class="btn sm ghost" data-covergen="${p.id}" style="margin-top:4px">Regenerate</button> <button class="btn sm ghost" data-editcl="${p.id}" style="margin-top:4px">Edit</button> <button class="btn sm ghost" data-sandbox="${p.id}" style="margin-top:4px">Sandbox</button>
+             ${ap.finalFile?`<br><span class="cc">sent: ${esc(ap.finalFile)}</span>`:''}
+             ${ap.sent&&!ap.finalFile?`<br><button class="btn sm ghost" data-final="${p.id}" style="margin-top:4px">Record final</button>`:''}`:'<span class="cc">generating\u2026</span>'}</td>
         <td><span class="pill ${pillCls}">${esc(st)}</span><br>
             <select data-st="${p.id}" style="margin-top:5px">${STATUSES.map(x=>`<option ${x===st?'selected':''}>${x}</option>`).join('')}</select></td>
         <td class="mono" style="font-size:11.5px">${esc(ap.sent||'\u2014')}</td>
         <td class="due ${overdue?'now':''}">${esc(ap.due||'\u2014')}</td>
         <td style="min-width:170px"><textarea class="notesin" data-nt="${p.id}" rows="2" placeholder="screen notes, contacts, next step">${esc(ap.notes||'')}</textarea></td>
-        <td>${ap.sent?'':`<button class="btn sm go" data-mark="${p.id}">Mark submitted</button>`}</td>
+        <td style="white-space:nowrap">${ap.sent?'':`<button class="btn sm go" data-mark="${p.id}">Mark submitted</button>`} <button class="btn sm ghost" data-archive="${p.id}">Archive</button></td>
       </tr>`}).join('')}</tbody></table>`;
 }
 
-let curDiffId=null;
 let curSandboxId=null;
 let SANDBOX_DRAFTS=[];
 let CL_EDIT_CTX=null;
 
 async function openCoverLetterSandbox(id){
   const p=P.find(x=>x.id===id);
-  if(!p||!p.app||!p.app.file){toast('Build a resume first — the cover letter echoes its bullet selection');return}
+  if(!p||!p.app){toast('Approve this posting first — the cover letter echoes its bullet selection');return}
   curSandboxId=id;
   SANDBOX_DRAFTS=[];
   $('#clTitle').textContent=`${p.co} — ${p.ti} · cover letter sandbox`;
@@ -832,49 +822,6 @@ async function ensureVariantLoaded(p){
   }catch(e){console.error('variant fetch failed:',e);return null}
 }
 
-async function renderDiff(id){
-  const p=P.find(x=>x.id===id);
-  const v=await ensureVariantLoaded(p);
-  if(!v){toast('No resume built for this posting yet');return}
-  curDiffId=id;
-  const vname=v.kind==='leadership'?'Leadership':'Engineer';
-  $('#mtitle').textContent=`${p.co} — ${p.ti} · ${vname} variant`;
-  const sel=v.sections||[];
-  const kept=sel.reduce((n,s2)=>n+s2.order.length,0), drop=sel.reduce((n,s2)=>n+s2.dropped.length,0);
-  const kwChips=(v.jd_keywords||[]).map(k=>`<span class="chip">${esc(k)}</span>`).join('')||'<span class="chip">none extracted</span>';
-  const matchTags=b=>(b.matched_keywords&&b.matched_keywords.length)
-    ?`<div class="mkw">matched: ${b.matched_keywords.map(esc).join(', ')}</div>`
-    :'<div class="mkw none">no JD keyword match</div>';
-  $('#mbody').innerHTML=`
-   <details class="jdbox" open>
-     <summary>Job description</summary>
-     <p style="white-space:pre-wrap;font-size:12.5px;margin:8px 0 0">${esc(v.jd_text||'Not available.')}</p>
-   </details>
-   <section style="margin:14px 0">
-     <h4 style="margin:0 0 5px">Why this fits — the rubric's own rationale</h4>
-     <p style="margin:0 0 10px;font-size:13px">${esc(v.rationale||'Not available.')}</p>
-     <h4 style="margin:0 0 5px">Keywords mirrored from the JD</h4>
-     <div class="chips">${kwChips}</div>
-   </section>
-   <div class="dlegend">
-     <span><i style="background:var(--auto)"></i>Included</span>
-     <span><i style="background:var(--rule)"></i>Dropped for this application</span>
-     <span class="mono">${kept} bullets in · ${drop} out</span>
-   </div>
-   <div class="dcols">
-     <div class="dcol"><h4>Baseline — all ${esc(vname)} bullets for these employers</h4>
-       ${sel.map(sc=>`<div class="dsec">${esc(sc.org)}</div>`+
-         [...sc.order,...sc.dropped].map(b=>`<div class="db"><span class="ref">${esc(b.ref)}</span>${esc(b.text)}</div>`).join('')).join('')}
-     </div>
-     <div class="dcol new"><h4>Tailored for this posting — why each line stayed or went</h4>
-       ${sel.map(sc=>`<div class="dsec">${esc(sc.org)}</div>`+
-         sc.order.map(b=>`<div class="db kept"><span class="ref">${esc(b.ref)}</span>${esc(b.text)}${matchTags(b)}</div>`).join('')+
-         sc.dropped.map(b=>`<div class="db dropped"><span class="ref">${esc(b.ref)} · dropped</span>${esc(b.text)}${matchTags(b)}</div>`).join('')).join('')}
-     </div>
-   </div>
-   <p class="hint" style="margin:16px 0 0">Assembly is selection only — every line above exists verbatim in the approved library, ranked by real keyword overlap with the JD. Nothing was rewritten for this posting.</p>`;
-  $('#mask').classList.add('on');
-}
 
 function drawOut(){
   const a=P.filter(p=>p.stage==='applied');
@@ -957,29 +904,46 @@ async function approvePosting(p){
   p.stage='approved';
   p.app={variant:p.v==='eng'?'Engineer':'Leadership',file:null,sent:null,status:'building',due:null,notes:''};
   p.o={name:'',title:'',url:''};
-  toast('Approved — assembling resume');
+  toast('Approved — generating cover letter');
   drawAll();
   let resp;
   try{
     resp=await fetch(`/api/postings/${p.id}/assemble`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
   }catch(e){
     p.stage='queue';p.app=null;
-    toast('Assembly failed — see console');console.error('assemble failed:',e);
+    toast('Approve failed — see console');console.error('assemble failed:',e);
     drawAll();return;
   }
   if(!resp.ok){
-    const err=await resp.json().catch(()=>({detail:'assembly failed'}));
+    const err=await resp.json().catch(()=>({detail:'approve failed'}));
     p.stage='queue';p.app=null;
-    toast(resp.status===422?`Blocked — ${err.detail}`:`Assembly failed: ${err.detail||resp.status}`);
+    toast(resp.status===422?`Blocked — ${err.detail}`:`Approve failed: ${err.detail||resp.status}`);
     drawAll();return;
   }
   const v=await resp.json();
   p.variant=v;
   if(v.brief){p.brief=v.brief}
-  p.app.file=(v.storage_path||'').split('/').pop();
+  // Cover letter generation used to be a separate manual step (Sandbox or
+  // "Generate cover letter") — now it kicks off automatically the moment
+  // the posting is approved, same trigger point resume assembly used to
+  // own before that was removed.
+  try{
+    const clResp=await fetch(`/api/postings/${p.id}/cover-letter`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    if(!clResp.ok){
+      const err=await clResp.json().catch(()=>({detail:'cover letter generation failed'}));
+      toast(`Approved — cover letter failed: ${err.detail||clResp.status}. Use Regenerate on the Applications tab.`);
+      p.app.status='ready to submit';
+      drawAll();return;
+    }
+  }catch(err){
+    toast('Approved — cover letter generation failed, see console. Use Regenerate on the Applications tab.');
+    console.error('cover letter generation failed:',err);
+    p.app.status='ready to submit';
+    drawAll();return;
+  }
   p.app.status='ready to submit';
-  toast('Resume ready — review before sending');
-  drawAll();
+  toast('Approved — cover letter ready');
+  await reloadPostings();
 }
 
 document.addEventListener('click',e=>{
@@ -1023,17 +987,6 @@ document.addEventListener('click',e=>{
       return}
     return}
 
-  const dl=e.target.dataset.dl;
-  if(dl){
-    e.preventDefault();
-    (async()=>{
-      const p=P.find(x=>x.id==dl);
-      const v=p&&await ensureVariantLoaded(p);
-      if(v&&v.signed_url){window.open(v.signed_url,'_blank')}
-      else{toast('No file to download')}
-    })();
-    return}
-
   const dlcl=e.target.dataset.dlcl;
   if(dlcl){
     e.preventDefault();
@@ -1062,25 +1015,9 @@ document.addEventListener('click',e=>{
     })();
     return}
 
-  const rr=e.target.dataset.regenresume;
-  if(rr){
-    e.target.disabled=true; e.target.textContent='Regenerating…';
-    (async()=>{
-      try{
-        const resp=await fetch(`/api/postings/${rr}/assemble`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-        if(!resp.ok){const err=await resp.json().catch(()=>({detail:'assembly failed'}));
-          toast(resp.status===422?`Blocked — ${err.detail}`:`Failed: ${err.detail||resp.status}`);
-          e.target.disabled=false;e.target.textContent='Regenerate resume';return}
-        toast('Resume regenerated — cover letter needs regenerating too if one existed');
-        await reloadPostings();
-      }catch(err){toast('Resume regeneration failed — see console');console.error('assemble failed:',err);
-        e.target.disabled=false;e.target.textContent='Regenerate resume';}
-    })();
-    return}
-
   const mk=e.target.dataset.mark;
   if(mk){const p=P.find(x=>x.id==mk);
-    if(p.app.status==='building'){toast('Resume still assembling');return}
+    if(p.app.status==='building'){toast('Still generating the cover letter — wait a moment');return}
     const due=new Date(Date.now()+7*86400000).toISOString().slice(0,10);
     patchApplication(mk,{status:'submitted',submitted_at:new Date().toISOString(),follow_up_due:due})
       .then(ok=>{if(ok){toast('Submitted \u2014 follow-up set for '+due);reloadPostings()}});
@@ -1094,9 +1031,6 @@ document.addEventListener('click',e=>{
       .then(ok=>{if(ok){toast('Final version recorded');reloadPostings()}});
     return}
 
-  const qf=e.target.closest('#qfilters button');
-  if(qf){QF=qf.dataset.f;document.querySelectorAll('#qfilters button').forEach(b=>b.setAttribute('aria-pressed',b===qf));drawQueue();return}
-
   if(e.target.id==='ansNew'){startNewAnswer();return}
   const la=e.target.closest('[data-loadans]');
   if(la){loadAnswerIntoWorkbench(la.dataset.loadans);return}
@@ -1104,10 +1038,6 @@ document.addEventListener('click',e=>{
   if(e.target.id==='ansReuseBtn'){reuseCurrentAnswer();return}
   const sa=e.target.dataset.saveans;
   if(sa!==undefined){saveAnsMessage(+sa);return}
-
-  const df=e.target.dataset.diff;
-  if(df){renderDiff(+df);return}
-  if(e.target.id==='mclose'||e.target.id==='mask'){$('#mask').classList.remove('on');return}
 
   const ar=e.target.dataset.archive;
   if(ar){
@@ -1231,14 +1161,6 @@ document.addEventListener('click',e=>{
         e.target.disabled=false;e.target.textContent='Save cover letter';}
     })();
     return}
-  if(e.target.id==='mdl'){
-    (async()=>{
-      const p=P.find(x=>x.id===curDiffId);
-      const v=p&&await ensureVariantLoaded(p);
-      if(v&&v.signed_url){window.open(v.signed_url,'_blank')}
-      else{toast('No file to download')}
-    })();
-    return}
 
   const gen=e.target.dataset.gen;
   if(gen){generateDrafts(+gen);return}
@@ -1277,8 +1199,12 @@ document.addEventListener('change',e=>{
   const nt=e.target.dataset.nt;
   if(nt){patchApplication(nt,{notes:e.target.value});}
   if(e.target.id==='ansPosting'){updateAnsReuseBtn();}
+  if(e.target.id==='appsSort'){APPS_SORT=e.target.value;drawApps();}
+  if(e.target.id==='appsFilter'){APPS_FILTER=e.target.value;drawApps();}
+  if(e.target.id==='qScoreFilter'){Q_SCORE_FILTER=+e.target.value;drawQueue();}
+  if(e.target.id==='qSortDir'){Q_SORT_DIR=e.target.value;drawQueue();}
 });
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){$('#mask').classList.remove('on');$('#clMask').classList.remove('on');$('#addMask').classList.remove('on')}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){$('#clMask').classList.remove('on');$('#addMask').classList.remove('on')}});
 
 // ---------------- settings ----------------
 // Real defaults until /api/settings responds — loadLiveData() below overwrites these.
@@ -1703,7 +1629,6 @@ function qCount(){
 function drawAll(){drawQueue();drawApps();drawOut();drawArchived();drawTags();qCount();}
 
 async function loadLiveData(){
-  const runinfo=$('#runinfo-text');
   try{
     const [postings,settings]=await Promise.all([
       fetch('/api/postings').then(r=>{if(!r.ok)throw new Error('postings '+r.status);return r.json()}),
@@ -1716,14 +1641,7 @@ async function loadLiveData(){
     CFG=PROFILES.find(p=>p.id===ACTIVE)||{inc:[],exc:[]};
     setActiveProfile(ACTIVE);
     populateCriteriaForm(settings.raw);
-    const queueCt=P.filter(p=>p.stage==='queue').length;
-    // Watchlist count dropped from this line — with queue_min_score set
-    // above score_threshold (the common case), it's structurally always 0
-    // and reads as broken rather than informative. Still a real tab/stage
-    // in the UI, just not part of this summary.
-    runinfo.textContent=`${P.length} scored · ${queueCt} in queue (≥${SCORE_THRESHOLD})`;
   }catch(e){
-    runinfo.textContent='Failed to load live data — see console';
     console.error('loadLiveData failed:',e);
   }
   drawAll();

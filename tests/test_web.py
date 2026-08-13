@@ -481,6 +481,9 @@ def test_api_assemble_requires_auth(raw_client):
 
 
 def test_api_assemble_happy_path(client, fake_db):
+    # No resume .docx gets rendered/uploaded anymore — the candidate
+    # maintains two static resumes by hand. assemble() still selects
+    # bullets and generates the brief that grounds the cover letter.
     posting_id = _seed_scored_posting(client)
     resp = client.post(f"/api/postings/{posting_id}/assemble", json={}, auth=(DASH_USER, DASH_PASS))
     assert resp.status_code == 200
@@ -488,8 +491,8 @@ def test_api_assemble_happy_path(client, fake_db):
     assert body["kind"] == "engineer"
     assert body["bullet_refs"] == ["BL-001"]
     assert body["brief"] == "Lead with the production system."
-    assert body["signed_url"].startswith("https://")
-    assert len(fake_db.uploaded_documents) == 1
+    assert body["storage_path"] is None
+    assert len(fake_db.uploaded_documents) == 0
 
 
 def test_api_assemble_unknown_posting_returns_404(client):
@@ -520,15 +523,15 @@ def test_api_variant_detail_404_when_not_assembled(client):
     assert resp.status_code == 404
 
 
-def test_api_variant_detail_restores_sections_and_fresh_signed_url(client, fake_db):
+def test_api_variant_detail_restores_variant_after_reload(client, fake_db):
     posting_id = _seed_scored_posting(client)
     client.post(f"/api/postings/{posting_id}/assemble", json={}, auth=(DASH_USER, DASH_PASS))
     resp = client.get(f"/api/postings/{posting_id}/variant", auth=(DASH_USER, DASH_PASS))
     assert resp.status_code == 200
     body = resp.json()
     assert body["kind"] == "engineer"
-    assert body["sections"][0]["order"][0]["ref"] == "BL-001"
-    assert body["signed_url"].startswith("https://")
+    assert body["bullet_refs"] == ["BL-001"]
+    assert body["cover_letter_signed_url"] is None  # no cover letter generated yet in this test
 
 
 # ---- cover letter ----
@@ -808,7 +811,7 @@ def test_api_application_patch_back_to_queue_after_approve(client, fake_db):
     assert resp.status_code == 200
     p = client.get("/api/postings", auth=(DASH_USER, DASH_PASS)).json()[0]
     assert p["stage"] == "queue"
-    assert p["app"]["file"]  # the built variant is still there, not discarded
+    assert p["app"]["variant"]  # the built variant is still there, not discarded
 
 
 def test_api_application_patch_mark_submitted_moves_to_applied(client, fake_db):
@@ -1137,6 +1140,6 @@ def test_api_postings_reflects_approved_stage_and_outreach_after_assembly(client
     resp = client.get("/api/postings", auth=(DASH_USER, DASH_PASS))
     p = resp.json()[0]
     assert p["stage"] == "approved"
-    assert p["app"]["file"]
+    assert p["app"]["variant"]
     assert p["o"]["name"] == "Jane Doe"
     assert p["o"]["note"]
