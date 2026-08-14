@@ -262,10 +262,14 @@ def handle_manual_add(
     fields: dict[str, Any],
 ) -> dict[str, Any]:
     """A posting the candidate found and entered by hand — 0 TheirStack
-    credits, runs through the exact same deterministic filter and scoring
-    as a real webhook delivery (see _filter_and_score), so it lands in
-    queue/watchlist/archived on the same terms as anything TheirStack
-    finds. Costs one Anthropic scoring call, same as any other posting.
+    credits. Unlike webhook ingest, this never runs the deterministic
+    filter or the queue_min_score cutoff and never lands in
+    Queue/Watchlist/Archived: a manual add is a stated intent to apply, not
+    a candidate for screening, so it goes straight into Applications (an
+    'approved'-stage application row) regardless of score. It's still
+    scored — the rubric, the brief, and the bullets the cover letter
+    echoes all come from that — scoring just never gates the outcome here
+    the way it does for anything TheirStack found on its own.
 
     If the title didn't match any profile's title_include (the reason it
     took a manual add to find it in the first place), learns it into
@@ -282,17 +286,30 @@ def handle_manual_add(
         payload={"source": "manual", "credits_consumed": 0},
     )
 
-    result = _filter_and_score(db, anthropic, settings, posting)
-    # _filter_and_score returns the flat postings row, not the joined shape
-    # with scores attached — re-fetch to read what the scorer decided. If
-    # the deterministic filter archived it before scoring ever ran (not
-    # remote, expired, etc.), there's no score and nothing to learn from —
-    # skip rather than guess a variant.
-    scores = db.get_posting(posting["id"]).get("scores") or []
-    if scores:
-        suggested_variant = scores[0].get("suggested_variant")
-        _learn_title_if_uncaught(db, theirstack, profiles, search_profile_id, fields["title"], suggested_variant)
-    return result
+    bullets = db.get_bullets()
+    score_row = score_posting(anthropic, posting, bullets, settings)
+    score_row["posting_id"] = posting["id"]
+    score = db.insert_score(score_row)
+    db.log_event(
+        entity_type="score", event="scored", entity_id=score["id"],
+        payload={"cost_usd": score_row["cost_usd"], "total": score_row["total"]},
+    )
+    db.update_posting(posting["id"], {"status": "scored"})
+    posting = {**posting, "status": "scored"}
+
+    # "building" (not one of the special-case statuses _stage_from_app
+    # checks for) is what makes this render as stage='approved' — the same
+    # value the dashboard sets client-side on a regular Approve click,
+    # before the cover letter is ready.
+    db.upsert_application({"posting_id": posting["id"], "status": "building"})
+    db.log_event(
+        entity_type="posting", event="manual_add_approved", entity_id=posting["id"],
+        payload={"score": score_row["total"]},
+    )
+
+    suggested_variant = score_row.get("suggested_variant")
+    _learn_title_if_uncaught(db, theirstack, profiles, search_profile_id, fields["title"], suggested_variant)
+    return posting
 
 
 def handle_job_closed(db: SightlineDB, payload: dict[str, Any]) -> None:

@@ -559,12 +559,24 @@ def test_handle_manual_add_ingests_scores_and_costs_zero_credits():
     assert any(e["event"] == "scored" for e in db.events)
 
 
-def test_handle_manual_add_archives_below_queue_min_score():
+def test_handle_manual_add_ignores_queue_min_score_entirely():
+    # A manual add is a stated intent to apply, not a candidate for
+    # screening — it must never get archived by the score cutoff the way
+    # webhook-delivered postings do, no matter how low it scores.
     db = FakeDB(queue_min_score=999)
     posting = handle_manual_add(
         db, FakeAnthropic(), FakeTheirStack(), db.get_settings(), db.get_search_profiles(), MANUAL_FIELDS
     )
-    assert posting["status"] == "archived"
+    assert posting["status"] == "scored"
+
+
+def test_handle_manual_add_creates_an_approved_application():
+    db = FakeDB()
+    posting = handle_manual_add(
+        db, FakeAnthropic(), FakeTheirStack(), db.get_settings(), db.get_search_profiles(), MANUAL_FIELDS
+    )
+    app = next(a for a in db.applications if a["posting_id"] == posting["id"])
+    assert app["status"] == "building"  # not queued/deferred/rejected/etc — renders as stage='approved'
 
 
 def test_handle_manual_add_upserts_on_repeat_url_instead_of_duplicating():

@@ -439,15 +439,17 @@ def test_api_postings_manual_ingests_and_scores_at_zero_credits(client, fake_db)
     resp = client.post("/api/postings/manual", json=MANUAL_FIELDS, auth=(DASH_USER, DASH_PASS))
     assert resp.status_code == 200
     body = resp.json()
-    assert body["status"] in ("scored", "archived")
+    # Never "archived" — a manual add is a stated intent to apply, so
+    # queue_min_score never gates it the way it does a webhook delivery.
+    assert body["status"] == "scored"
 
     ingested = next(e for e in fake_db.events if e["event"] == "ingested")
     assert ingested["payload"]["source"] == "manual"
     assert ingested["payload"]["credits_consumed"] == 0
 
-    if body["status"] == "scored":
-        postings = client.get("/api/postings", auth=(DASH_USER, DASH_PASS)).json()
-        assert any(p["ti"] == "Business Operations Generalist" for p in postings)
+    postings = client.get("/api/postings", auth=(DASH_USER, DASH_PASS)).json()
+    added = next(p for p in postings if p["ti"] == "Business Operations Generalist")
+    assert added["stage"] == "approved"  # straight into Applications, not Queue/Watchlist
 
 
 def test_api_postings_manual_unexpected_failure_returns_real_detail(client, fake_db, monkeypatch):
