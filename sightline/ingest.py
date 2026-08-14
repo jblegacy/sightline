@@ -21,6 +21,7 @@ from sightline.budget import check_and_enforce_budget, check_and_enforce_daily_c
 from sightline.db import SightlineDB
 from sightline.filter import apply_filter
 from sightline.scoring import score_posting
+from sightline.settings_service import update_search_profile
 from sightline.theirstack import TheirStackClient
 
 
@@ -146,7 +147,7 @@ def _filter_and_score(
     posting = {**posting, "status": "filtered"}
 
     bullets = db.get_bullets()
-    score_row = score_posting(anthropic, posting, bullets)
+    score_row = score_posting(anthropic, posting, bullets, settings)
     score_row["posting_id"] = posting["id"]
     score = db.insert_score(score_row)
     db.log_event(
@@ -197,9 +198,65 @@ def manual_job_to_posting(fields: dict[str, Any], company_id: int, search_profil
     }
 
 
+def _learn_title_if_uncaught(
+    db: SightlineDB,
+    theirstack: TheirStackClient,
+    profiles: list[dict[str, Any]],
+    matched_profile_id: str | None,
+    title: str,
+    suggested_variant: str | None,
+) -> None:
+    """A manually-added posting that classify_search_profile couldn't match
+    to any profile's title_include means TheirStack's live fetch never
+    would have surfaced it on its own — the whole point of a manual add is
+    finding roles the search missed. Learn from it: add the literal title
+    to whichever profile the scorer thinks it belongs to (suggested_variant
+    maps to resume_variant), so the next one like it gets caught
+    automatically.
+
+    Skips anything that would violate CLAUDE.md's disjoint-title-lists
+    guarantee — an exclude-list conflict on the target profile, or overlap
+    with the OTHER profile's include list — since that guarantee is the
+    only thing stopping a posting from matching both profiles and being
+    delivered (and charged) twice. A skip is logged, not silent, so it's
+    still visible for a human to decide on."""
+    if matched_profile_id is not None:
+        return  # an existing list already would have caught this one
+    title = title.strip()
+    if not title:
+        return
+    target = next((p for p in profiles if p.get("resume_variant") == (suggested_variant or "engineer")), None)
+    if target is None:
+        return
+    t = title.lower()
+    if t in [x.lower() for x in (target.get("title_include") or [])]:
+        return  # already there verbatim
+    if any(term in t for term in target.get("title_exclude") or []):
+        db.log_event(
+            entity_type="search_profile", event="title_learn_skipped_excluded",
+            payload={"profile_id": target["id"], "title": title},
+        )
+        return
+    other = next((p for p in profiles if p["id"] != target["id"]), None)
+    if other and any(term in t for term in other.get("title_include") or []):
+        db.log_event(
+            entity_type="search_profile", event="title_learn_skipped_overlap",
+            payload={"profile_id": target["id"], "title": title, "other_profile_id": other["id"]},
+        )
+        return
+
+    updated_include = [*(target.get("title_include") or []), title]
+    update_search_profile(db, theirstack, target["id"], {"title_include": updated_include})
+    db.log_event(
+        entity_type="search_profile", event="title_learned",
+        payload={"profile_id": target["id"], "title": title},
+    )
+
+
 def handle_manual_add(
     db: SightlineDB,
     anthropic: AnthropicClient,
+    theirstack: TheirStackClient,
     settings: dict[str, Any],
     profiles: list[dict[str, Any]],
     fields: dict[str, Any],
@@ -208,7 +265,12 @@ def handle_manual_add(
     credits, runs through the exact same deterministic filter and scoring
     as a real webhook delivery (see _filter_and_score), so it lands in
     queue/watchlist/archived on the same terms as anything TheirStack
-    finds. Costs one Anthropic scoring call, same as any other posting."""
+    finds. Costs one Anthropic scoring call, same as any other posting.
+
+    If the title didn't match any profile's title_include (the reason it
+    took a manual add to find it in the first place), learns it into
+    whichever profile's title list the scorer's suggested_variant points
+    to — see _learn_title_if_uncaught."""
     if not fields.get("title") or not fields.get("url") or not fields.get("jd_text"):
         raise ValueError("title, url, and jd_text are required")
 
@@ -220,7 +282,17 @@ def handle_manual_add(
         payload={"source": "manual", "credits_consumed": 0},
     )
 
-    return _filter_and_score(db, anthropic, settings, posting)
+    result = _filter_and_score(db, anthropic, settings, posting)
+    # _filter_and_score returns the flat postings row, not the joined shape
+    # with scores attached — re-fetch to read what the scorer decided. If
+    # the deterministic filter archived it before scoring ever ran (not
+    # remote, expired, etc.), there's no score and nothing to learn from —
+    # skip rather than guess a variant.
+    scores = db.get_posting(posting["id"]).get("scores") or []
+    if scores:
+        suggested_variant = scores[0].get("suggested_variant")
+        _learn_title_if_uncaught(db, theirstack, profiles, search_profile_id, fields["title"], suggested_variant)
+    return result
 
 
 def handle_job_closed(db: SightlineDB, payload: dict[str, Any]) -> None:

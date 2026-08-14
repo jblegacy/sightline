@@ -519,7 +519,9 @@ def test_manual_job_to_posting_comp_source_absent_with_no_salary():
 def test_handle_manual_add_requires_title_url_and_jd_text():
     db = FakeDB()
     try:
-        handle_manual_add(db, FakeAnthropic(), db.get_settings(), db.get_search_profiles(), {"title": "X"})
+        handle_manual_add(
+            db, FakeAnthropic(), FakeTheirStack(), db.get_settings(), db.get_search_profiles(), {"title": "X"}
+        )
         assert False, "expected ValueError"
     except ValueError as e:
         assert "required" in str(e)
@@ -539,15 +541,16 @@ def test_filter_and_score_return_value_reflects_final_status_not_stale_snapshot(
     db.update_posting.return_value = None
     db.get_bullets.return_value = []
     db.insert_score.return_value = {"id": 1}
+    db.get_posting.return_value = {"id": 42, "scores": []}  # no learn step to exercise here
 
-    posting = handle_manual_add(db, FakeAnthropic(), {}, [], MANUAL_FIELDS)
+    posting = handle_manual_add(db, FakeAnthropic(), FakeTheirStack(), {}, [], MANUAL_FIELDS)
     assert posting["status"] == "scored"
 
 
 def test_handle_manual_add_ingests_scores_and_costs_zero_credits():
     db = FakeDB()
     posting = handle_manual_add(
-        db, FakeAnthropic(), db.get_settings(), db.get_search_profiles(), MANUAL_FIELDS
+        db, FakeAnthropic(), FakeTheirStack(), db.get_settings(), db.get_search_profiles(), MANUAL_FIELDS
     )
     assert posting["status"] == "scored"
     ingested = next(e for e in db.events if e["event"] == "ingested")
@@ -559,16 +562,60 @@ def test_handle_manual_add_ingests_scores_and_costs_zero_credits():
 def test_handle_manual_add_archives_below_queue_min_score():
     db = FakeDB(queue_min_score=999)
     posting = handle_manual_add(
-        db, FakeAnthropic(), db.get_settings(), db.get_search_profiles(), MANUAL_FIELDS
+        db, FakeAnthropic(), FakeTheirStack(), db.get_settings(), db.get_search_profiles(), MANUAL_FIELDS
     )
     assert posting["status"] == "archived"
 
 
 def test_handle_manual_add_upserts_on_repeat_url_instead_of_duplicating():
     db = FakeDB()
-    handle_manual_add(db, FakeAnthropic(), db.get_settings(), db.get_search_profiles(), MANUAL_FIELDS)
-    handle_manual_add(db, FakeAnthropic(), db.get_settings(), db.get_search_profiles(), MANUAL_FIELDS)
+    handle_manual_add(
+        db, FakeAnthropic(), FakeTheirStack(), db.get_settings(), db.get_search_profiles(), MANUAL_FIELDS
+    )
+    handle_manual_add(
+        db, FakeAnthropic(), FakeTheirStack(), db.get_settings(), db.get_search_profiles(), MANUAL_FIELDS
+    )
     assert len(db.postings) == 1
+
+
+def test_handle_manual_add_learns_title_into_profile_when_uncaught():
+    # MANUAL_FIELDS's title ("AI Automation Engineer") matches neither
+    # profile's title_include in the fixture — this is exactly the case a
+    # manual add exists for: TheirStack's own search missed it, so the
+    # profile it scores closest to (suggested_variant, always "engineer"
+    # from FakeAnthropic) should learn the literal title for next time.
+    db = FakeDB()
+    handle_manual_add(
+        db, FakeAnthropic(), FakeTheirStack(), db.get_settings(), db.get_search_profiles(), MANUAL_FIELDS
+    )
+    automation = next(p for p in db.get_search_profiles() if p["id"] == "automation")
+    assert MANUAL_FIELDS["title"] in automation["title_include"]
+    assert any(e["event"] == "title_learned" for e in db.events)
+
+
+def test_handle_manual_add_does_not_relearn_a_title_already_caught():
+    db = FakeDB()
+    handle_manual_add(
+        db, FakeAnthropic(), FakeTheirStack(), db.get_settings(), db.get_search_profiles(), MANUAL_FIELDS
+    )
+    before = len(next(p for p in db.get_search_profiles() if p["id"] == "automation")["title_include"])
+    handle_manual_add(
+        db, FakeAnthropic(), FakeTheirStack(), db.get_settings(),
+        db.get_search_profiles(), {**MANUAL_FIELDS, "url": "https://acme.com/careers/manual-2"},
+    )
+    after = len(next(p for p in db.get_search_profiles() if p["id"] == "automation")["title_include"])
+    assert after == before  # same title, already learned — no duplicate entry
+
+
+def test_handle_manual_add_skips_learning_a_title_that_is_excluded():
+    db = FakeDB()
+    excluded_fields = {**MANUAL_FIELDS, "title": "AI Engineer", "url": "https://acme.com/careers/manual-3"}
+    handle_manual_add(
+        db, FakeAnthropic(), FakeTheirStack(), db.get_settings(), db.get_search_profiles(), excluded_fields
+    )
+    automation = next(p for p in db.get_search_profiles() if p["id"] == "automation")
+    assert "AI Engineer" not in automation["title_include"]
+    assert any(e["event"] == "title_learn_skipped_excluded" for e in db.events)
 
 
 def test_handle_job_new_does_not_rescore_a_redelivered_match():

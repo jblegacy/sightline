@@ -49,6 +49,28 @@ def test_build_user_content_handles_no_salary():
     assert "not posted" in content
 
 
+def test_build_user_content_includes_candidate_comp_target_and_floor():
+    settings = {"comp_target": 150000, "comp_low_line": 90000}
+    content = build_user_content(SAMPLE_POSTING, SAMPLE_BULLETS, settings)
+    assert "$150,000" in content
+    assert "$90,000" in content
+
+
+def test_build_user_content_includes_red_flag_phrases():
+    settings = {"red_flag_phrases": ["unlimited PTO", "wear many hats"]}
+    content = build_user_content(SAMPLE_POSTING, SAMPLE_BULLETS, settings)
+    assert "unlimited PTO" in content
+    assert "wear many hats" in content
+
+
+def test_build_user_content_handles_no_settings():
+    # Backward compatible — no settings passed at all shouldn't KeyError,
+    # just says these aren't set rather than crashing scoring outright.
+    content = build_user_content(SAMPLE_POSTING, SAMPLE_BULLETS)
+    assert "not set" in content
+    assert "none set yet" in content
+
+
 def test_dimensions_sum_matches_prototype_rubric():
     # DIMS in prototype/sightline-dashboard.html: 25+20+15+15+15+10-30 = 70
     assert sum(max_pts for _, max_pts in DIMENSIONS) == 70
@@ -61,7 +83,7 @@ def test_score_posting_maps_model_output_to_scores_row():
     row = score_posting(fake_client, SAMPLE_POSTING, SAMPLE_BULLETS)
 
     assert row["total"] == 78
-    assert row["rubric_version"] == "v1"
+    assert row["rubric_version"] == "v2"
     assert row["model"] == "claude-haiku-4-5"
     assert row["matched_bullet_ids"] == ["BL-014"]
     assert row["knockouts"] == ["5+ years required"]
@@ -69,6 +91,19 @@ def test_score_posting_maps_model_output_to_scores_row():
     assert row["reports_to"] == "VP Engineering"
     assert row["cost_usd"] == 0.00123
     assert row["coding_interview_signals"] == []
+
+
+def test_score_posting_passes_settings_through_to_the_prompt():
+    fake_client = MagicMock()
+    fake_client.structured_call.return_value = (FAKE_MODEL_RESULT, 0.00123)
+    settings = {"comp_target": 150000, "comp_low_line": 90000, "red_flag_phrases": ["rockstar"]}
+
+    score_posting(fake_client, SAMPLE_POSTING, SAMPLE_BULLETS, settings)
+
+    sent = fake_client.structured_call.call_args.kwargs["user_content"]
+    assert "$150,000" in sent
+    assert "$90,000" in sent
+    assert "rockstar" in sent
 
 
 def test_score_posting_empty_reports_to_becomes_none():

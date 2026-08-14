@@ -167,14 +167,17 @@ def api_postings_manual(
     fields: dict[str, Any],
     db: SightlineDB = Depends(get_db),
     anthropic: AnthropicClient = Depends(get_anthropic),
+    theirstack: TheirStackClient = Depends(get_theirstack),
 ) -> dict:
     """A job the candidate found themselves — pasted in by hand, 0
     TheirStack credits, scored through the exact same pipeline as a real
-    webhook delivery. See sightline/ingest.py handle_manual_add."""
+    webhook delivery. See sightline/ingest.py handle_manual_add — this also
+    learns the title into a profile's title_include when nothing already
+    would have caught it, so the search widens from what manual adds find."""
     try:
         profiles = db.get_search_profiles()
         settings = db.get_settings()
-        posting = handle_manual_add(db, anthropic, settings, profiles, fields)
+        posting = handle_manual_add(db, anthropic, theirstack, settings, profiles, fields)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
