@@ -147,7 +147,7 @@ def _filter_and_score(
     posting = {**posting, "status": "filtered"}
 
     bullets = db.get_bullets()
-    score_row = score_posting(anthropic, posting, bullets)
+    score_row = score_posting(anthropic, posting, bullets, settings)
     score_row["posting_id"] = posting["id"]
     score = db.insert_score(score_row)
     db.log_event(

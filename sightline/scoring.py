@@ -8,7 +8,11 @@ from typing import Any
 from sightline.anthropic_client import AnthropicClient
 
 MODEL = "claude-haiku-4-5"
-RUBRIC_VERSION = "v1"
+# v2: comp_signal, seniority_scope, and red_flags now score against the
+# candidate's own settings (comp_target/comp_low_line, a stated seniority
+# level, red_flag_phrases) instead of generic judgment with no input about
+# who's actually applying — a real behavior change, hence the version bump.
+RUBRIC_VERSION = "v2"
 
 # (dimension key, max points) — matches prototype/sightline-dashboard.html's
 # DIMS array exactly, since that prototype is the UI contract this scores for.
@@ -45,14 +49,34 @@ Only flag HARD requirements as knockouts — required years of experience, requi
 required credential, mandatory onsite days. Do NOT flag "preferred" or "nice to have" language; \
 flagging soft preferences destroys the signal this field is supposed to carry.
 
-The candidate is an operations leader who builds with AI agents — not a software engineer, no \
-CS background. Title alone is unreliable in both directions: some "engineer"-titled roles are \
-configuration and solutions work, and some "analyst" roles are real software-engineering jobs. \
-Read the JD itself and set `coding_interview_signals` to the exact phrases that indicate a \
-coding interview or CS-fundamentals screen — "data structures", "system design interview", \
-"CS degree required", "production code", "on-call", "code review", and similar. Empty array if \
-none present. This is separate from `knockouts` — it's a pattern to flag for judgment, not a \
-stated hard requirement.
+The candidate is a senior operations leader who builds with AI agents — SVP / Chief of Staff / \
+Fractional COO-level experience, not a software engineer, no CS background. Title alone is \
+unreliable in both directions: some "engineer"-titled roles are configuration and solutions \
+work, and some "analyst" roles are real software-engineering jobs. Read the JD itself and set \
+`coding_interview_signals` to the exact phrases that indicate a coding interview or \
+CS-fundamentals screen — "data structures", "system design interview", "CS degree required", \
+"production code", "on-call", "code review", and similar. Empty array if none present. This is \
+separate from `knockouts` — it's a pattern to flag for judgment, not a stated hard requirement.
+
+Score `seniority_scope` against that level specifically, not a generic "is this senior enough" \
+read: a posting scoped well below it (individual-contributor work with no ownership or \
+cross-functional scope) loses points for being too junior, and a posting demanding a much \
+larger org (e.g. a large existing team to inherit, a scope well beyond what one operator plus \
+AI agents can cover) loses points for being unrealistic in the other direction. Neither \
+direction is automatically safer than the other.
+
+Score `comp_signal` against the candidate's own target and floor, given below as "Candidate comp \
+target" and "Candidate comp floor" — at or above target scores near the max, between floor and \
+target scores in the middle of the range, below floor scores low. If no compensation is posted \
+at all, do not default to a low score purely for missing data — judge plausibility from the \
+role's scope, seniority, and company signals instead, the same as you would if a human were \
+guessing before an offer conversation.
+
+For `red_flags`, weigh both your own judgment (vague scope, bait-and-switch language, unrealistic \
+expectations) and the candidate's own list of red-flag phrases, given below as "Candidate's \
+red-flag phrases" — if the JD contains any of those phrases, that counts toward the deduction \
+even if it wouldn't otherwise read as a red flag to you. An empty list there just means none are \
+set yet, not that the JD is automatically clean.
 
 `matched_bullet_refs` must only contain refs that appear in the provided bullet library — \
 never invent a ref. Pick bullets whose tags or content plausibly overlap this posting's \
@@ -117,10 +141,16 @@ def _format_bullets(bullets: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def build_user_content(posting: dict[str, Any], bullets: list[dict[str, Any]]) -> str:
+def build_user_content(
+    posting: dict[str, Any], bullets: list[dict[str, Any]], settings: dict[str, Any] | None = None
+) -> str:
+    settings = settings or {}
     comp = "not posted"
     if posting.get("comp_min") or posting.get("comp_max"):
         comp = f"${posting.get('comp_min', '?')}–${posting.get('comp_max', '?')}"
+    comp_target = settings.get("comp_target")
+    comp_low_line = settings.get("comp_low_line")
+    red_flag_phrases = settings.get("red_flag_phrases") or []
     return f"""JOB POSTING
 
 Title: {posting['title']}
@@ -131,6 +161,12 @@ Posted: {posting.get('posted_at', 'unknown')}
 
 Description:
 {posting.get('jd_text') or '(no description text)'}
+
+---
+
+Candidate comp target: {f'${comp_target:,}' if comp_target else 'not set'}
+Candidate comp floor: {f'${comp_low_line:,}' if comp_low_line else 'not set'}
+Candidate's red-flag phrases: {', '.join(red_flag_phrases) if red_flag_phrases else '(none set yet)'}
 
 ---
 
@@ -159,10 +195,12 @@ def score_posting(
     client: AnthropicClient,
     posting: dict[str, Any],
     bullets: list[dict[str, Any]],
+    settings: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Returns a dict shaped for the `scores` table (minus posting_id, which
-    the caller sets)."""
-    user_content = build_user_content(posting, bullets)
+    the caller sets). settings carries comp_target/comp_low_line/
+    red_flag_phrases through to the prompt — see build_user_content."""
+    user_content = build_user_content(posting, bullets, settings)
     result, cost_usd = client.structured_call(
         model=MODEL,
         system=SYSTEM_PROMPT,
