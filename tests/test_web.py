@@ -2,7 +2,9 @@ import hashlib
 import hmac
 import json
 
+import httpx
 import pytest
+import respx
 from fastapi.testclient import TestClient
 
 from sightline.auth import SESSION_COOKIE
@@ -411,6 +413,65 @@ def _seed_scored_posting(client) -> int:
     return posting["id"]
 
 
+# ---- parse posting url ----
+
+PARSE_URL = "https://example.com/careers/jobs/123"
+
+
+def test_api_parse_posting_url_requires_auth(raw_client):
+    resp = raw_client.post("/api/postings/parse-url", json={"url": PARSE_URL})
+    assert resp.status_code == 401
+
+
+def test_api_parse_posting_url_requires_url(client):
+    resp = client.post("/api/postings/parse-url", json={}, auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 400
+
+
+@respx.mock
+def test_api_parse_posting_url_happy_path(client):
+    respx.get("https://example.com/robots.txt").mock(return_value=httpx.Response(404))
+    respx.get(PARSE_URL).mock(
+        return_value=httpx.Response(
+            200,
+            text="<html><body><h1>AI Enablement Lead</h1><p>"
+                 + ("Own AI adoption across the organization. " * 10) + "</p></body></html>",
+        )
+    )
+    resp = client.post("/api/postings/parse-url", json={"url": PARSE_URL}, auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["title"] == "AI Enablement Lead"
+    assert body["company"] == "Acme Inc"
+    assert body["remote"] is True
+    assert body["jd_text"] == "Own AI adoption across the org."
+
+
+@respx.mock
+def test_api_parse_posting_url_maps_robots_disallowed_to_422(client):
+    respx.get("https://example.com/robots.txt").mock(
+        return_value=httpx.Response(200, text="User-agent: *\nDisallow: /")
+    )
+    resp = client.post("/api/postings/parse-url", json={"url": PARSE_URL}, auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 422
+
+
+@respx.mock
+def test_api_parse_posting_url_maps_thin_content_to_422(client):
+    respx.get("https://example.com/robots.txt").mock(return_value=httpx.Response(404))
+    respx.get(PARSE_URL).mock(return_value=httpx.Response(200, text="<html><body></body></html>"))
+    resp = client.post("/api/postings/parse-url", json={"url": PARSE_URL}, auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 422
+
+
+@respx.mock
+def test_api_parse_posting_url_maps_fetch_failure_to_502(client):
+    respx.get("https://example.com/robots.txt").mock(return_value=httpx.Response(404))
+    respx.get(PARSE_URL).mock(return_value=httpx.Response(404))
+    resp = client.post("/api/postings/parse-url", json={"url": PARSE_URL}, auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 502
+
+
 # ---- manual add ----
 
 MANUAL_FIELDS = {
@@ -439,15 +500,17 @@ def test_api_postings_manual_ingests_and_scores_at_zero_credits(client, fake_db)
     resp = client.post("/api/postings/manual", json=MANUAL_FIELDS, auth=(DASH_USER, DASH_PASS))
     assert resp.status_code == 200
     body = resp.json()
-    assert body["status"] in ("scored", "archived")
+    # Never "archived" — a manual add is a stated intent to apply, so
+    # queue_min_score never gates it the way it does a webhook delivery.
+    assert body["status"] == "scored"
 
     ingested = next(e for e in fake_db.events if e["event"] == "ingested")
     assert ingested["payload"]["source"] == "manual"
     assert ingested["payload"]["credits_consumed"] == 0
 
-    if body["status"] == "scored":
-        postings = client.get("/api/postings", auth=(DASH_USER, DASH_PASS)).json()
-        assert any(p["ti"] == "Business Operations Generalist" for p in postings)
+    postings = client.get("/api/postings", auth=(DASH_USER, DASH_PASS)).json()
+    added = next(p for p in postings if p["ti"] == "Business Operations Generalist")
+    assert added["stage"] == "approved"  # straight into Applications, not Queue/Watchlist
 
 
 def test_api_postings_manual_unexpected_failure_returns_real_detail(client, fake_db, monkeypatch):

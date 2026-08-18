@@ -516,7 +516,7 @@ table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   <div class="mhead"><h3>Add a job manually</h3>
     <div><button class="btn sm ghost" id="addClose">Close</button></div></div>
   <div class="mbody">
-    <p class="hint" style="margin:0 0 14px">For a job you found yourself, outside TheirStack — 0 credits. Runs through the same filter and scoring as anything ingested automatically, and lands in queue, watchlist, or archived on the same terms.</p>
+    <p class="hint" style="margin:0 0 14px">For a job you found yourself, outside TheirStack — 0 credits. Adding one here means you're applying, not screening — it goes straight to Applications, skipping the queue score cutoff entirely, with a resume variant and cover letter generated automatically.</p>
     <div id="addErrBox" style="display:none;margin:0 0 14px;padding:10px 12px;border:1px solid #c0392b;border-radius:6px;background:rgba(192,57,43,0.08)">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px">
         <span style="font-weight:600;color:#c0392b">Add failed</span>
@@ -524,12 +524,16 @@ table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       </div>
       <pre id="addErrText" style="white-space:pre-wrap;word-break:break-word;margin:0;font-size:12.5px;user-select:text"></pre>
     </div>
+    <label class="flabel">Posting URL *</label>
+    <div style="display:flex;gap:8px;align-items:flex-start">
+      <input type="text" id="addUrl" class="finput" placeholder="https://..." style="flex:1">
+      <button class="btn sm ghost" id="addFetchUrl" type="button" style="white-space:nowrap">Fetch details</button>
+    </div>
+    <p class="hint" style="margin:5px 0 0" id="addFetchHint">Paste a link and fetch title, company, and the description automatically — review everything below before adding, it isn't always perfect.</p>
     <label class="flabel">Job title *</label>
     <input type="text" id="addTitle" class="finput" placeholder="Business Operations Generalist">
     <label class="flabel">Company</label>
     <input type="text" id="addCompany" class="finput" placeholder="Unknown if not given">
-    <label class="flabel">Posting URL *</label>
-    <input type="text" id="addUrl" class="finput" placeholder="https://...">
     <label class="flabel">Location</label>
     <input type="text" id="addLocation" class="finput" placeholder="e.g. United States, Remote">
     <label class="flabel">Remote?</label>
@@ -539,9 +543,9 @@ table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       <option value="false">Not remote</option>
     </select>
     <label class="flabel">Job description *</label>
-    <textarea id="addJdText" class="finput" rows="8" placeholder="Paste the full JD text here"></textarea>
+    <textarea id="addJdText" class="finput" rows="8" placeholder="Paste the full JD text here, or fetch it from the URL above"></textarea>
     <div style="margin-top:14px;display:flex;gap:8px">
-      <button class="btn sm go" id="addSubmit">Add and score</button>
+      <button class="btn sm go" id="addSubmit">Add and apply</button>
       <button class="btn sm ghost" id="addCancel">Cancel</button>
     </div>
   </div>
@@ -900,47 +904,58 @@ async function generateDrafts(id){
   renderDraftsFromO(id);
 }
 
+// Shared by Approve and manual-add — both need the same "select bullets,
+// gate provenance, generate the brief, then generate the cover letter"
+// sequence once a posting is (or becomes) an application. onFail, if
+// given, only runs on the assemble step failing (the step that can't be
+// silently skipped); a cover-letter failure alone still leaves a real
+// application behind, just without a cover letter yet, so Regenerate on
+// the Applications tab is enough of a recovery path for that one.
+async function assembleAndGenerateCoverLetter(p,onFail){
+  let resp;
+  try{
+    resp=await fetch(`/api/postings/${p.id}/assemble`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+  }catch(e){
+    console.error('assemble failed:',e);
+    if(onFail)onFail('Approve failed — see console');
+    return false;
+  }
+  if(!resp.ok){
+    const err=await resp.json().catch(()=>({detail:'approve failed'}));
+    if(onFail)onFail(resp.status===422?`Blocked — ${err.detail}`:`Approve failed: ${err.detail||resp.status}`);
+    return false;
+  }
+  const v=await resp.json();
+  p.variant=v;
+  if(v.brief){p.brief=v.brief}
+  try{
+    const clResp=await fetch(`/api/postings/${p.id}/cover-letter`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    if(!clResp.ok){
+      const err=await clResp.json().catch(()=>({detail:'cover letter generation failed'}));
+      toast(`Cover letter failed: ${err.detail||clResp.status}. Use Regenerate on the Applications tab.`);
+      return true;
+    }
+  }catch(err){
+    console.error('cover letter generation failed:',err);
+    toast('Cover letter generation failed, see console. Use Regenerate on the Applications tab.');
+    return true;
+  }
+  return true;
+}
+
+function switchToView(name){
+  document.querySelectorAll('nav button').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.v===name)));
+  document.querySelectorAll('.view').forEach(v=>v.classList.toggle('on',v.id==='v-'+name));
+}
+
 async function approvePosting(p){
   p.stage='approved';
   p.app={variant:p.v==='eng'?'Engineer':'Leadership',file:null,sent:null,status:'building',due:null,notes:''};
   p.o={name:'',title:'',url:''};
   toast('Approved — generating cover letter');
   drawAll();
-  let resp;
-  try{
-    resp=await fetch(`/api/postings/${p.id}/assemble`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-  }catch(e){
-    p.stage='queue';p.app=null;
-    toast('Approve failed — see console');console.error('assemble failed:',e);
-    drawAll();return;
-  }
-  if(!resp.ok){
-    const err=await resp.json().catch(()=>({detail:'approve failed'}));
-    p.stage='queue';p.app=null;
-    toast(resp.status===422?`Blocked — ${err.detail}`:`Approve failed: ${err.detail||resp.status}`);
-    drawAll();return;
-  }
-  const v=await resp.json();
-  p.variant=v;
-  if(v.brief){p.brief=v.brief}
-  // Cover letter generation used to be a separate manual step (Sandbox or
-  // "Generate cover letter") — now it kicks off automatically the moment
-  // the posting is approved, same trigger point resume assembly used to
-  // own before that was removed.
-  try{
-    const clResp=await fetch(`/api/postings/${p.id}/cover-letter`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-    if(!clResp.ok){
-      const err=await clResp.json().catch(()=>({detail:'cover letter generation failed'}));
-      toast(`Approved — cover letter failed: ${err.detail||clResp.status}. Use Regenerate on the Applications tab.`);
-      p.app.status='ready to submit';
-      drawAll();return;
-    }
-  }catch(err){
-    toast('Approved — cover letter generation failed, see console. Use Regenerate on the Applications tab.');
-    console.error('cover letter generation failed:',err);
-    p.app.status='ready to submit';
-    drawAll();return;
-  }
+  const ok=await assembleAndGenerateCoverLetter(p,msg=>{p.stage='queue';p.app=null;toast(msg);});
+  if(!ok){drawAll();return}
   p.app.status='ready to submit';
   toast('Approved — cover letter ready');
   await reloadPostings();
@@ -1082,6 +1097,37 @@ document.addEventListener('click',e=>{
     const txt=$('#addErrText').textContent;
     navigator.clipboard?.writeText(txt).then(()=>toast('Copied')).catch(()=>toast('Copy failed — select manually'));
     return}
+  if(e.target.id==='addFetchUrl'){
+    const url=$('#addUrl').value.trim();
+    if(!url){toast('Paste a URL first');return}
+    const btn=e.target, label=btn.textContent;
+    btn.disabled=true; btn.textContent='Fetching…';
+    $('#addErrBox').style.display='none';
+    (async()=>{
+      try{
+        const resp=await fetch('/api/postings/parse-url',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});
+        if(!resp.ok){const err=await resp.json().catch(()=>({detail:`HTTP ${resp.status}`}));
+          $('#addErrText').textContent=err.detail||`HTTP ${resp.status}`;
+          $('#addErrBox').style.display='block';
+          toast('Fetch failed — see error above');
+          btn.disabled=false;btn.textContent=label;return}
+        const f=await resp.json();
+        if(f.title)$('#addTitle').value=f.title;
+        if(f.company)$('#addCompany').value=f.company;
+        if(f.location)$('#addLocation').value=f.location;
+        if(f.remote===true)$('#addRemote').value='true';
+        else if(f.remote===false)$('#addRemote').value='false';
+        if(f.jd_text)$('#addJdText').value=f.jd_text;
+        toast('Fetched — review before adding, it isn’t always perfect');
+        btn.disabled=false;btn.textContent=label;
+      }catch(err){
+        $('#addErrText').textContent=String(err&&err.message||err);
+        $('#addErrBox').style.display='block';
+        toast('Fetch failed — see error above');
+        console.error('parse-url failed:',err);
+        btn.disabled=false;btn.textContent=label;}
+    })();
+    return}
   if(e.target.id==='addClose'||e.target.id==='addCancel'||e.target.id==='addMask'){$('#addMask').classList.remove('on');return}
   if(e.target.id==='addSubmit'){
     const title=$('#addTitle').value.trim(), url=$('#addUrl').value.trim(), jd_text=$('#addJdText').value.trim();
@@ -1102,19 +1148,34 @@ document.addEventListener('click',e=>{
           $('#addErrText').textContent=err.detail||`HTTP ${resp.status}`;
           $('#addErrBox').style.display='block';
           toast('Add failed — see error above');
-          e.target.disabled=false;e.target.textContent='Add and score';return}
+          e.target.disabled=false;e.target.textContent='Add and apply';return}
         const body=await resp.json();
         $('#addMask').classList.remove('on');
-        toast(body.status==='archived'?'Added — scored below the queue threshold, check Watchlist/archive':'Added and scored');
-        e.target.disabled=false;e.target.textContent='Add and score';
+        e.target.disabled=false;e.target.textContent='Add and apply';
+        // A manual add is a stated intent to apply, not a queue candidate —
+        // the backend already scored it and put it straight into
+        // Applications (see handle_manual_add), skipping Queue/Watchlist/
+        // Archived and the queue_min_score cutoff entirely. Finish the
+        // same assemble + cover-letter sequence Approve uses, then jump
+        // there so it's visibly there, not just technically there.
         await reloadPostings();
-        if(body.status==='archived')refreshArchived();
+        const p=P.find(x=>x.id===body.id);
+        if(p){
+          toast('Added — generating cover letter');
+          const ok=await assembleAndGenerateCoverLetter(p);
+          if(ok&&p.app){p.app.status='ready to submit'}
+          toast(ok?'Added — cover letter ready':'Added, but cover letter generation failed — check Applications tab');
+          drawAll();
+        }else{
+          toast('Added');
+        }
+        switchToView('apps');
       }catch(err){
         $('#addErrText').textContent=String(err && err.message || err);
         $('#addErrBox').style.display='block';
         toast('Add failed — see error above');
         console.error('manual add failed:',err);
-        e.target.disabled=false;e.target.textContent='Add and score';}
+        e.target.disabled=false;e.target.textContent='Add and apply';}
     })();
     return}
 
