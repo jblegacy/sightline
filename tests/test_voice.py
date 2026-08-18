@@ -7,7 +7,10 @@ def test_voice_rules_bans_em_and_en_dash():
 
 
 def test_voice_rules_lists_banned_words():
-    for word in ("leverage", "spearheaded", "synergy", "passionate about"):
+    # Matches the 2026-08-17 writing guide's banned list, not the earlier
+    # VOICE_PROFILE.md-derived one it superseded — "deeply passionate," not
+    # "passionate about," is what the guide actually bans.
+    for word in ("leverage", "spearheaded", "synergy", "deeply passionate", "intersection"):
         assert word in VOICE_RULES
 
 

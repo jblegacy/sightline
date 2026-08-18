@@ -2,13 +2,18 @@
 different category from resume assembly (CLAUDE.md rule 1 is about resume
 bullet text specifically). Same discipline as outreach drafts and the
 answer workbench: grounded only in verified bullets and the posting's real
-details, never inventing an achievement. Echoes the same bullets already
-selected for this posting's resume so the two documents tell one story.
+details, never inventing an achievement.
 
-Three structural styles (STYLE_STRUCTURES) share all of that discipline and
-differ only in shape — see generate_cover_letter_variants for the sandbox
-that generates all three at once so the candidate can pick one before
-anything is rendered or saved.
+Structure and voice follow James Beam's Job Application Writing Guide
+(2026-08-17) and the four real cover letters confirmed alongside it
+(CodePath, Mercury, Argano, Whip Around) — see sightline/voice.py
+COVER_LETTER_EXAMPLES for two given in full. That guide describes ONE
+canonical approach, not several formats to pick from; STYLE_STRUCTURES below
+keeps three length variants of it (a full call-out-everything version, a
+shorter one, and a compressed note) rather than collapsing to a single
+shape, so the sandbox still gives a real choice — but all three now share
+the same opener, the same AI-projects bullet treatment, and the same
+model-written (not fixed) closing.
 """
 from __future__ import annotations
 
@@ -21,192 +26,169 @@ from docx.shared import Inches, Pt
 
 from sightline.anthropic_client import AnthropicClient
 from sightline.assembly import CONTACT, NAME
-from sightline.voice import VOICE_RULES, voice_reference
+from sightline.voice import COVER_LETTER_EXAMPLES, VOICE_RULES, voice_reference
 
 MODEL = "claude-sonnet-5"
 
-# Three structural shapes, reverse-engineered live from real recruiter-facing
-# examples the candidate reviewed and liked (resumegenius.com's IT PM,
-# nursing, and social-media letters). Everything except {structure} is
-# shared discipline that doesn't change across styles: grounding, tone,
-# gap-handling, voice. Only the shape of the pitch differs.
+# Pre-approved, fixed text for the three AI projects — same principle as
+# resume bullets: the numbers (48 hours, 50 roles/day, 540 profiles, 60
+# days) must stay exact, not get paraphrased into something subtly wrong.
+# The model selects which of these to use and may lightly smooth the
+# sentence for flow, but the facts inside each description are fixed. Format
+# matches the confirmed real letters exactly: "- **Name** description," no
+# colon (VOICE RULE 1 bans colons in prose) — **Name** is the one narrow,
+# explicit exception to VOICE RULE 11's no-markdown rule, since it's the
+# real letters' own convention and render_cover_letter_docx() parses it into
+# an actual bold run, not literal asterisks in the delivered document.
+AI_PROJECTS = """- **Sightline** Built and launched an AI powered workflow system in 48 hours \
+that handles job discovery, qualification, document generation, application tracking, outreach, \
+and follow ups while keeping human review in the loop. It now surfaces roughly 50 roles a day and \
+reduced a two hour daily search process to a morning review.
+- **Barometer** Built and tested an automated prediction market system using live market and \
+weather APIs and a 540 profile testing matrix across hundreds of model configurations. The \
+testing showed that market speed and weather data latency removed the trading edge, so paused \
+the system rather than continuing to automate something that did not make economic sense.
+- **Ottonimus** Built a functional AI powered SEO and GEO platform prototype over roughly 60 \
+days, bringing website performance, technical SEO, backlinks, local SEO, Google presence, and \
+emerging GEO workflows into one system."""
+
 STYLE_STRUCTURES = {
-    "traditional": """Structure, in this order — this is the most complete of the three formats, \
-HARD CAP 320 words total:
+    "traditional": """Structure, in this order — the fullest of the three formats, HARD CAP 450 \
+words total (the four confirmed real examples run 380-420 words each; this format allows a bit \
+more room but 450 is still a ceiling, not a suggestion):
 1. Opening — the shared opener below. Nothing else in that sentence.
-2. Context — ONE paragraph (2-3 sentences), prose only, no bullets yet: your most recent or most \
-relevant work, framed by scope and responsibility.
-3. Company-research beat — ONE sentence naming something specific and real about this company, \
-pulled from the company signals or the JD itself — not generic enthusiasm ("I'd love to work \
-here"), an actual detail (a market, a product line, something they're building or scaling). If \
-nothing specific enough is available in what you're given, skip this sentence entirely rather \
-than inventing one — a vague substitute is worse than no beat at all.
-4. Transition sentence, then ONE line per JD category identified above, in the JD's own order — \
-not a free pick of your best 2-4 wins. Each line connects your closest matching verified \
-achievement to that category's actual ask (see "show your work" above). If a category has no \
-strong direct match, use the closest honest, defensible connection rather than skipping it \
-outright — e.g. documentation and playbook-building work is legitimate evidence for a "training" \
-category even if the original bullet wasn't literally about training employees. Never fabricate \
-a connection that isn't defensible, but look hard before deciding one doesn't exist. Each line \
-starts with "- ", is one line, no sub-clauses, and stays under about 30 words.
-5. Do not write a closing sentence, sign-off, or "looking forward to..." line — the letter body \
-ends right after the last bullet line. A fixed closing line is appended separately afterward; \
-writing your own here would duplicate it.""",
-    "compressed": """Structure, in this order — this is the shortest of the three formats, HARD \
-CAP 160 words total, no padding. Length discipline is the entire point of this format, which \
-means it does NOT attempt full category coverage — that's what Traditional and Warm are for:
+2. ONE short paragraph (2-3 sentences) on why this specific role caught his attention — the \
+actual problem the company is solving, connected to the kind of work he likes doing. Never \
+restate the JD back ("You are looking for someone to build AI-powered operational systems") — say \
+something more natural, like naming what the work really is underneath the posting's own words.
+3. The AI-projects bullet list, using 2-3 of the projects given below (not necessarily all \
+three — pick whichever are most relevant to this role; never force all three in if only two fit). \
+Format each as "- Name description" using the given text close to verbatim — don't pad or \
+elaborate on it.
+4. ONE paragraph (2-3 sentences) reflecting on what building these actually taught him — not \
+that he knows AI tools, but the judgment part: deciding what should be automated, where people \
+still need to make the call, how to make something reliable enough to be trusted. This is the \
+"AI judgment, not just AI building" beat.
+5. ONE paragraph (2-3 sentences) on his broader operating background (the Comarkco $250K to $12M \
+story, or the inventory-visibility example if the role is about operational transformation \
+specifically) — proof this approach predates AI, not proof he can recite a resume.
+6. ONE paragraph (1-2 sentences) connecting specifically to this company — why this company and \
+role make sense for him, referencing something real and specific about them, not "great fit" \
+language.
+7. ONE closing sentence, written fresh for this letter, in the spirit of "I'd love the \
+opportunity to bring [something specific] to [Company] and [do something specific]" — never a \
+generic "I believe I would be a great fit" close, and never invented follow-up commitments \
+("I'll follow up next week").""",
+    "compressed": """Structure, in this order — the shortest of the three formats, target \
+150-220 words total, no padding:
 1. Opening — the shared opener below.
-2. ONE dense paragraph, prose only — NO bullet list anywhere in this version, and only ONE \
-concrete example, not two. Ground that one example in whichever JD category got the most space \
-or detail in the posting — the one a skimmed reading proves you actually noticed. Fold your \
-single strongest quantified win directly into a sentence that also says why it matters for that \
-category (see "show your work" above). Do not add a second anecdote, even a short one — that's \
-what breaks the word cap.
-3. ONE more sentence — one additional concrete strength or credibility marker, still prose, not \
-its own multi-sentence paragraph.
-4. Do not write a closing sentence, sign-off, or "looking forward to..." line — the letter body \
-ends right after step 3. A fixed closing line is appended separately afterward; writing your own \
-here would duplicate it.
-If a draft would run over 160 words, cut the credibility-marker sentence (step 3) before cutting \
-anything else.""",
-    "warm": """Structure, in this order — target 190-250 words total:
-1. Opening — the shared opener below.
-2. Company-research beat — ONE sentence naming something specific and real about this company, \
-pulled from the company signals or the JD itself — not generic enthusiasm ("I'm passionate about \
-[industry]" / "I'd love to work here"), an actual detail (a market, a product, a specific problem \
-they've described taking on). If nothing specific enough is available in what you're given, skip \
-this sentence entirely rather than inventing one — a vague substitute is worse than no beat at all.
-3. Transition sentence, then ONE line per JD category identified above, in the JD's own order — \
-not a free pick of your best wins. Each line connects your closest matching verified achievement \
-to that category's actual ask (see "show your work" above). If a category has no strong direct \
-match, use the closest honest, defensible connection rather than skipping it outright. Each line \
-starts with "- ", is one line, no sub-clauses, and stays under about 30 words.
-4. Do not write a closing sentence, sign-off, or "looking forward to..." line — the letter body \
-ends right after the last bullet line. A fixed closing line is appended separately afterward; \
-writing your own here would duplicate it.""",
+2. ONE tight paragraph: why the role caught his attention, connected directly into his broader \
+operating background in the same paragraph rather than as a separate section.
+3. ONE or two lines from the AI-projects bullet list below — pick the single most relevant \
+project, or two only if both are clearly relevant. Do not use all three; that's what the fuller \
+formats are for.
+4. ONE closing sentence, written fresh, short and direct.
+This format skips the reflection paragraph and the company-specific paragraph — length discipline \
+is the point, not full coverage.""",
+    "warm": """Structure, in this order — HARD CAP 400 words total (the four confirmed real \
+examples run 380-420 words each; treat 400 as a ceiling, not a suggestion), matching the shape of \
+the confirmed real examples most closely:
+1. Opening — the shared opener below. Nothing else in that sentence.
+2. ONE short paragraph (2-3 sentences) on why this specific role caught his attention — the real \
+problem the company is solving, connected to the kind of work he likes. Never restate the JD back \
+at the reader.
+3. The AI-projects bullet list, using 2-3 of the projects given below, whichever are most \
+relevant to this role. Format each as "- Name description," using the given text close to \
+verbatim — don't pad or elaborate on it.
+4. ONE paragraph (2-3 sentences) reflecting on what building these taught him — the judgment \
+part, not the tool part.
+5. ONE paragraph (2-3 sentences) on his broader operating background (Comarkco, or the inventory \
+example if the role is about operational transformation specifically).
+6. ONE paragraph (1-2 sentences) connecting specifically to this company.
+7. ONE closing sentence, written fresh, in the spirit of "I'd love the opportunity to bring \
+[something specific] to [Company] and [do something specific]."
+Count words as you write. If the draft would run over 400, the reflection paragraph (step 4) and \
+the company-connection paragraph \
+(step 6) can merge into one, but never drop the AI-projects bullets or the fresh closing.""",
 }
 
 STYLE_LABELS = {
-    "traditional": "Traditional",
+    "traditional": "Full",
     "compressed": "Direct",
     "warm": "Warm",
 }
 
 STYLE_DESCRIPTIONS = {
-    "traditional": "Company-research beat + one line per JD category. Most formal, most complete.",
-    "compressed": "Prose only, no bullets, one category only. Shortest — reads like a note.",
-    "warm": "Company-research beat + one line per JD category, warm and casual throughout.",
+    "traditional": "Every beat: hook, AI projects, reflection, operating background, company fit. Fullest, matches the confirmed examples' length.",
+    "compressed": "One paragraph, one project, one line close. Shortest — reads like a note.",
+    "warm": "Same beats as Full, slightly shorter — the default shape.",
 }
 
 STYLES = tuple(STYLE_STRUCTURES)
 
 SYSTEM_PROMPT = """You write a cover letter for a job application, grounded ONLY in the \
-candidate's verified resume bullets given below plus the real details of this posting. Never \
-invent an achievement, number, or outcome that isn't in the verified bullets.
+candidate's verified resume bullets given below, the fixed AI-projects text given below, and the \
+real details of this posting. Never invent an achievement, number, or outcome that isn't in one \
+of those two sources.
 
 Recruiters scan hundreds of these — every sentence you'd cut from a first draft, cut.
 
-Opening line, every style, no exceptions: "I'm excited to apply for the [Role] at [Company]" \
-(this exact opener overrides VOICE RULES 6, 11, and 12 below — confirmed live as what the \
-candidate wants, every time, not just as a fallback). No "ideal candidate," no restating what \
-the role does back to the reader.
+Opening line, every style, no exceptions: "I'm excited to apply for the [exact role name] role at \
+[Company]." Use the posting's own title, not a paraphrase, and include the word "role" the way \
+the confirmed examples do. Nothing else in that sentence — no "ideal candidate," no restating \
+what the role does back to the reader.
 
-Find the JD's own top-level categories before writing anything. If it has literal section \
-headers (e.g. "AI Adoption & Training" / "Business Process Analysis" / "Agent Strategy & \
-Design" / "Adoption Measurement"), those ARE the categories, in that exact order — use the JD's \
-own words for them, don't paraphrase or merge them. If it's a flat list with no headers, group \
-the stated responsibilities into 3-5 clear thematic clusters yourself. This matters: postings in \
-this space are very often structured exactly this way, and a letter that quietly cherry-picks \
-2-3 easy wins while ignoring a named section reads as not having read past the first paragraph — \
-the candidate has said this explicitly and it applies to every posting, not just this one.
+Read the JD to find the actual problem the company is trying to solve and what the hiring \
+manager will actually care about, not to extract a checklist to mirror back. Never copy the JD's \
+own distinctive phrasing into the letter — translate the underlying ask into plain language \
+instead (see VOICE RULE 5 below for a worked example). A cover letter that quietly restates the \
+posting's own words reads as not having thought about it, not as having read it closely.
 
-Hit every category without announcing it. Never label a line with the category name ("On Agent \
-Strategy and Design, I..." / "For Adoption Measurement, ..."). That reads like a worksheet, not a \
-person, and the candidate has said directly it's too on-the-nose. The category should be obvious \
-from what the line is actually about — the same way Business Process Analysis is unmistakable in \
-"I mapped a client's inventory workflow end to end before ever picking a platform" without the \
-words "business process analysis" appearing anywhere in the sentence. Weave the connection into \
-natural language exactly like that; never scaffold it with a label.
+The AI-projects bullet list (when the structure below calls for it) uses the fixed text given \
+below, verbatim or lightly smoothed for flow — never invent a fourth project, never change a \
+number. Select 2-3 of the three based on genuine relevance to this posting; do not force all \
+three in in every letter just because they're available. If the role is not AI-forward at all, \
+it's fine to lead with operating background instead and use only one AI project, or none, rather \
+than shoehorning them in.
 
-Show your work. Don't just list what you did — say why it specifically matters for THIS role, \
-and for the category it's answering. A fact alone ("built a finance system") is resume content; \
-a fact plus its relevance ("built a finance system from scratch, which is the same kind of \
-ground-up build this role's Business Process Analysis work needs") is what a cover letter adds \
-that a resume can't. Every achievement you cite must connect explicitly to the category it's \
-standing in for — pull the connection from the JD's own language, and don't assume the reader \
-will draw the line themselves. Draw it for them, in the same sentence or line.
+Show your work. Don't just state what was built — say what it actually taught him, in the \
+register of judgment rather than a feature list: what should be automated, where a human still \
+needs to make the call, how to make something reliable enough that people trust it, when to stop \
+rather than keep automating something that doesn't make economic sense. That reflection is what a \
+cover letter adds that a resume can't.
 
-The bridge is not optional for any line — every single one needs it, not just most of them. And \
-it has to be specific: name the actual thing from the JD (the initiative type, the population \
-served, the concrete deliverable, the specific challenge the posting names) — never a generic \
-abstraction like "the same instinct this role needs" or "exactly what this role is asking for." \
-If you can't find a genuine, specific bridge for a bullet, pick a different verified bullet \
-instead of letting that line stand without one or reaching for a vague truism to fill the gap.
-
-Write plain, not corporate. No business-metaphor shorthand — "connective tissue," "move the \
-needle," "synergy," and similar — describe the actual work directly instead. Each line should \
-read as one clean sentence you'd say out loud in conversation: if it needs more than one \
-qualifying clause, restructure it as a straightforward sentence rather than stacking an \
-"including..." onto a "before/once..." onto the main clause — that's what makes a line hard to \
-parse in one pass.
-
-Whenever a structure below calls for a transition sentence, its grammatical subject must be the \
-candidate's own background, stated concretely — a real noun phrase for what you actually do \
-(e.g. "My background is building AI agent systems and the operational infrastructure around \
-them"), never the posting or the role ("This role requires...", "The posting moves through...", \
-"There are a few things this job is asking for..."). A transition sentence that describes the JD \
-instead of the candidate reads like a worksheet, not a person.
-
-State each achievement in your own words, in a natural, conversational register — never a copy \
-of the verified bullet's phrasing. The number, outcome, and claim must match a verified bullet \
-exactly; the sentence construction must not. A line that reads like it was lifted straight off a \
-resume is a bug — a cover letter is prose meant to be read like someone talking, not scanned in \
-resume fragments.
-
-When a structure below calls for multiple lines, no more than HALF of them may start with "I" as \
-the literal first word of the line — count this as you write, the same way you'd track a word \
-cap. This isn't about varying the verb ("Built... Created... Standardized..." still fails even \
-though the verbs differ) — it's the word "I" itself repeated as every line's opening that reads \
-as self-focused and makes the letter feel like a list of "I did this, I did that" rather than \
-someone explaining their fit. For the lines that don't open with "I," use a real alternative \
-structure, not a filler word tacked on front:
-- A subordinate clause first: "Before I chose a platform for a client's broken inventory system, \
-I mapped their entire workflow by hand, which is the same discipline this role needs before \
-recommending automation."
-- A topical phrase first: "On the governance side, I designed the reporting infrastructure \
-executives used to make decisions, so I know what it takes to define standards an agent can be \
-trusted to work from."
-- The deliverable itself as the grammatical subject: "The reporting infrastructure I built became \
-what executives actually used to make decisions."
-Mix these in naturally — don't force every single line into a different pattern for its own sake, \
-just break up the run of "I" openings so it doesn't read as a monotonous self-inventory.
-
-Confident, not cocky. State what you did and let it speak for itself — never tell the reader \
-what the role "actually" is, what they're "actually" asking for beneath the posting's own words, \
-or frame yourself as seeing something about the job that they don't. Never compare yourself to \
-other candidates ("further than most candidates," "unlike other applicants") — you have no idea \
-who else applied, and the claim reads as arrogant rather than as evidence.
-
-None of the instructions above change the document's shape. "Conversational register" and "read \
-like someone talking" describe the wording INSIDE each line, never a license to merge the \
-achievement list into a flowing paragraph. When the structure below calls for a bulleted list, \
-that means literally one line per achievement, each one starting with "- ", exactly as many \
-lines as there are categories — not folded into prose, not combined into fewer sentences, \
-regardless of how conversational each line's wording is.
+Never lead with a conclusion about the role or make its case for it ("This role is a perfect \
+match because..."). Let the specific, concrete details make that case instead, the way the \
+confirmed examples do — the reader draws the fit conclusion themselves.
 
 {structure}
 
-Never name a gap, missing skill, or unmet requirement anywhere in the letter — this overrides \
-VOICE RULE 7 below. A cover letter is a pitch, not a disclosure; gaps get discussed in the \
-interview if they come up, not volunteered here. Pick bullets and framing that put the strongest \
-foot forward and simply don't mention what isn't there.
+Never name a gap, missing skill, or unmet requirement anywhere in the letter. A cover letter is a \
+pitch, not a disclosure; gaps get discussed in the interview if they come up, not volunteered \
+here. Pick bullets, projects, and framing that put the strongest foot forward and simply don't \
+mention what isn't there.
+
+The closing sentence must be written fresh for this letter, not a template filled in — see the \
+structure below for the register ("I'd love the opportunity to bring [something specific] to \
+[Company] and [do something specific]"), and see the writing guide's explicit warning against \
+"I believe my unique background makes me the perfect candidate" as the wrong way to close. Never \
+invent a follow-up commitment ("I'll follow up next week," "I'll reach out to schedule a call") — \
+the candidate has no intention of keeping one and does not want it promised on his behalf.
 
 No corporate throat-clearing, no restating the resume verbatim, no invented personality or \
 passion claims, no sentence that could be pasted into any other cover letter unchanged. Return \
 only the letter body — no salutation or signature, those are added separately. Separate each \
-block above (opening+context, company-research beat, bullet list, close) with a blank line.
+paragraph and the bullet list (if used) with a blank line.
 
 {voice_rules}
+
+AI PROJECTS (fixed text — select 2-3 based on relevance, do not invent a fourth or change a \
+number):
+{ai_projects}
+
+Two confirmed real cover letters, given in full, as the primary reference for both voice and \
+structure — study these closely, do not write anything more polished or corporate than these are:
+{cover_letter_examples}
 
 Below are additional real samples of the candidate's own writing, for rhythm and word choice \
 only — do not copy their content or reuse their sentences, these are a different story for a \
@@ -215,7 +197,8 @@ different question:
 VOICE REFERENCE (candidate's own writing):
 {voice_reference}
 
-Bullets already selected for this posting's resume — echo this same emphasis:
+Bullets already selected for this posting's resume — echo this same emphasis for the operating-\
+background paragraph:
 {selected_bullets}
 
 Rest of the verified bullet library, for supporting reference only:
@@ -244,15 +227,11 @@ Gaps to prepare for: {', '.join(score.get('unmet_requirements') or [])}
 Company signals: {', '.join(score.get('company_signals') or [])}"""
 
 
-# Fixed, not model-generated — confirmed live as the candidate's own wording
-# from a real cover letter he'd already sent. A model-written close kept
-# inventing follow-up commitments ("I'll follow up next week") the candidate
-# has no intention of keeping; this removes that risk entirely rather than
-# just steering the prompt away from it. Company name is the only variable.
-CLOSING_LINE = (
-    "I look forward to the opportunity to be a part of the {company} team – please feel free to "
-    "reach out if you have any questions. Looking forward to chatting!"
-)
+# No fixed closing line as of the 2026-08-17 writing guide — the earlier
+# fixed-string approach traded away a genuine, letter-specific close (see
+# the four confirmed examples, each ending differently) to avoid the model
+# inventing follow-up commitments. The prompt now steers away from that
+# risk directly instead (see SYSTEM_PROMPT's closing-sentence instruction).
 
 
 def greeting_for(score: dict[str, Any]) -> str:
@@ -282,7 +261,8 @@ def _generate_styled(
     other = [b for b in verified if b["ref"] not in selected_bullet_refs]
     system = SYSTEM_PROMPT.format(
         structure=STYLE_STRUCTURES[style],
-        voice_rules=VOICE_RULES, voice_reference=voice_reference(answers or []),
+        voice_rules=VOICE_RULES, ai_projects=AI_PROJECTS, cover_letter_examples=COVER_LETTER_EXAMPLES,
+        voice_reference=voice_reference(answers or []),
         selected_bullets=_format_bullets(selected), other_bullets=_format_bullets(other),
     )
     user_content = build_user_content(posting, score)
@@ -294,8 +274,6 @@ def _generate_styled(
     # cover letter and uploaded to storage — never let that happen quietly.
     if len(text) < 50:
         raise ValueError(f"cover letter generation returned no usable text ({len(text)} chars)")
-    company = (posting.get("companies") or {}).get("name", "this company")
-    text = f"{text}\n\n{CLOSING_LINE.format(company=company)}"
     return text, cost
 
 
@@ -345,6 +323,25 @@ def render_cover_letter_docx(text: str, company: str, title: str, greeting: str 
         r.font.size = Pt(size)
         r.bold = bold
 
+    def bullet_line(t: str) -> None:
+        # AI-projects bullets carry one narrow markdown exception —
+        # **Name** at the start of the line (see VOICE RULES 11) — turned
+        # into a real bold run here rather than shipped as literal asterisks.
+        p = doc.add_paragraph(style="List Bullet")
+        p.paragraph_format.space_after = Pt(4)
+        if t.startswith("**") and "**" in t[2:]:
+            end = t.index("**", 2)
+            name, rest = t[2:end], t[end + 2:]
+            r1 = p.add_run(name)
+            r1.bold = True
+            r1.font.size = Pt(11)
+            if rest:
+                r2 = p.add_run(rest)
+                r2.font.size = Pt(11)
+        else:
+            r = p.add_run(t)
+            r.font.size = Pt(11)
+
     para(NAME, size=14, bold=True, after=1)
     para(CONTACT, size=9.5, after=16)
     para(datetime.now(timezone.utc).strftime("%B %d, %Y"), size=10.5, after=16)
@@ -358,15 +355,12 @@ def render_cover_letter_docx(text: str, company: str, title: str, greeting: str 
         lines = [ln.strip() for ln in block.split("\n") if ln.strip()]
         if lines and all(ln.startswith("- ") for ln in lines):
             for ln in lines:
-                p = doc.add_paragraph(ln[2:].strip(), style="List Bullet")
-                p.paragraph_format.space_after = Pt(4)
-                for r in p.runs:
-                    r.font.size = Pt(11)
+                bullet_line(ln[2:].strip())
             doc.paragraphs[-1].paragraph_format.space_after = Pt(10)
         else:
             para(block, size=11, after=10)
 
-    para("Sincerely,", size=11, after=2)
+    para("Best,", size=11, after=2)  # matches all four confirmed real letters' sign-off
     para(NAME, size=11, after=0)
 
     buf = io.BytesIO()

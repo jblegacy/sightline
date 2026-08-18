@@ -35,7 +35,7 @@ def test_build_system_prompt_includes_voice_rules():
     # bans — this is the same voice discipline, applied here too.
     prompt = build_system_prompt([], [], None)
     assert VOICE_RULES in prompt
-    assert "no markdown formatting" in prompt.lower() or "**bold**" in prompt
+    assert "markdown formatting" in prompt.lower()
 
 
 def test_build_system_prompt_includes_posting_context_when_given():

@@ -3,13 +3,13 @@ from unittest.mock import MagicMock
 from docx import Document as DocxDocument
 
 from sightline.cover_letter import (
-    CLOSING_LINE,
+    AI_PROJECTS,
     build_user_content,
     generate_cover_letter,
     greeting_for,
     render_cover_letter_docx,
 )
-from sightline.voice import VOICE_RULES
+from sightline.voice import COVER_LETTER_EXAMPLES, VOICE_RULES
 
 BULLETS = [
     {"ref": "BL-001", "text": "Built the automation platform.", "status": "verified"},
@@ -60,10 +60,11 @@ def test_generate_cover_letter_only_grounds_in_verified_bullets():
     )
     text, cost = generate_cover_letter(fake_client, POSTING, SCORE, BULLETS, ["BL-001"])
 
-    expected_close = CLOSING_LINE.format(company="Convergent Research")
+    # No fixed closing appended as of the writing-guide rewrite — the
+    # model's own output is returned as-is (see the "as-is" test below for
+    # the direct regression coverage of that).
     assert text == (
-        "Paragraph one, with enough real content to clear the length floor.\n\n"
-        f"Paragraph two.\n\n{expected_close}"
+        "Paragraph one, with enough real content to clear the length floor.\n\nParagraph two."
     )
     assert cost == 0.015
     sent_system = fake_client.chat_call.call_args.kwargs["system"]
@@ -103,23 +104,41 @@ def test_generate_cover_letter_works_without_answers():
     fake_client = MagicMock()
     fake_client.chat_call.return_value = ("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", 0.01)
     text, cost = generate_cover_letter(fake_client, POSTING, SCORE, BULLETS, ["BL-001"])
-    expected_close = CLOSING_LINE.format(company="Convergent Research")
-    assert text == f"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n\n{expected_close}"
+    assert text == "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
     sent_system = fake_client.chat_call.call_args.kwargs["system"]
     assert "(none available)" in sent_system
 
 
-def test_generate_cover_letter_appends_fixed_closing_line_not_model_generated():
-    # The close used to be model-written and would sometimes invent a
-    # follow-up commitment ("I'll follow up next week") the candidate has no
-    # intention of keeping — confirmed live as unwanted. It's now fixed,
-    # confirmed-good wording the model never sees or writes, only the
-    # company name varies.
+def test_generate_cover_letter_returns_model_text_as_is_no_fixed_closing():
+    # The close used to be a fixed string appended after generation, to
+    # avoid the model inventing a follow-up commitment ("I'll follow up
+    # next week") the candidate has no intention of keeping. The 2026-08-17
+    # writing guide's confirmed real letters each end differently — a fixed
+    # line traded away a genuine, letter-specific close, so the prompt now
+    # steers away from invented commitments directly instead (see
+    # SYSTEM_PROMPT) and the model's own output is returned untouched.
     fake_client = MagicMock()
     fake_client.chat_call.return_value = ("Body text with enough length to clear the floor check.", 0.01)
     text, _ = generate_cover_letter(fake_client, POSTING, SCORE, BULLETS, ["BL-001"])
-    assert text.endswith(CLOSING_LINE.format(company="Convergent Research"))
-    assert "Body text with enough length to clear the floor check." in text
+    assert text == "Body text with enough length to clear the floor check."
+
+
+def test_generate_cover_letter_includes_ai_projects_and_confirmed_examples():
+    fake_client = MagicMock()
+    fake_client.chat_call.return_value = ("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", 0.01)
+    generate_cover_letter(fake_client, POSTING, SCORE, BULLETS, ["BL-001"])
+    sent_system = fake_client.chat_call.call_args.kwargs["system"]
+    assert AI_PROJECTS in sent_system
+    assert COVER_LETTER_EXAMPLES in sent_system
+    assert "**Sightline**" in sent_system
+
+
+def test_generate_cover_letter_uses_new_opener_format():
+    fake_client = MagicMock()
+    fake_client.chat_call.return_value = ("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", 0.01)
+    generate_cover_letter(fake_client, POSTING, SCORE, BULLETS, ["BL-001"])
+    sent_system = fake_client.chat_call.call_args.kwargs["system"]
+    assert "I'm excited to apply for the [exact role name] role at [Company]." in sent_system
 
 
 def test_generate_cover_letter_separates_selected_from_other_bullets():
@@ -146,6 +165,36 @@ def test_render_cover_letter_docx_produces_valid_docx_with_body_text():
     assert "Convergent Research" in full_text
     assert "Program Operations Manager" in full_text
     assert "Dear Hiring Team," in full_text  # default greeting
+
+
+def test_render_cover_letter_docx_uses_best_sign_off():
+    # All four confirmed real letters (CodePath, Mercury, Argano, Whip
+    # Around) sign off "Best," — not "Sincerely,".
+    docx_bytes = render_cover_letter_docx("Body.", "Acme", "Role")
+    import io
+    doc = DocxDocument(io.BytesIO(docx_bytes))
+    full_text = "\n".join(p.text for p in doc.paragraphs)
+    assert "Best," in full_text
+    assert "Sincerely," not in full_text
+
+
+def test_render_cover_letter_docx_bolds_ai_project_name_in_bullets():
+    docx_bytes = render_cover_letter_docx(
+        "Intro paragraph.\n\n- **Sightline** Built and launched a workflow system.\n- "
+        "**Barometer** Built and tested a prediction market system.\n\nClosing paragraph.",
+        "Acme", "Role",
+    )
+    import io
+    doc = DocxDocument(io.BytesIO(docx_bytes))
+    full_text = "\n".join(p.text for p in doc.paragraphs)
+    # The markdown markers themselves never survive into the document.
+    assert "**" not in full_text
+    assert "Sightline" in full_text
+    assert "Built and launched a workflow system." in full_text
+    bullet_para = next(p for p in doc.paragraphs if p.text.startswith("Sightline"))
+    assert bullet_para.runs[0].text == "Sightline"
+    assert bullet_para.runs[0].bold is True
+    assert bullet_para.runs[1].bold is not True
 
 
 def test_render_cover_letter_docx_uses_custom_greeting():

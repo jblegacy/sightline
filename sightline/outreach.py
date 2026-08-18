@@ -61,9 +61,9 @@ These are short enough that the sentence-rhythm rule above mostly doesn't apply 
 banned-word list, concrete nouns, and matching the model example's directness over rhythm \
 variation.
 
-None of these three drafts should name a gap, missing skill, or unmet requirement — this \
-overrides VOICE RULE 7 above. Outreach is part of applying, same as the cover letter; gaps get \
-discussed in the interview if they come up, not volunteered before it.
+None of these three drafts should name a gap, missing skill, or unmet requirement. Outreach is \
+part of applying, same as the cover letter; gaps get discussed in the interview if they come up, \
+not volunteered before it.
 
 Real samples of the candidate's own writing, for word choice and tone only — do not copy their \
 content, these are a different context entirely:
