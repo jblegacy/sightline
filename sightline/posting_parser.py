@@ -31,6 +31,24 @@ class RobotsDisallowedError(Exception):
     pass
 
 
+class ThinPageContentError(Exception):
+    """Raised when the fetched page has too little visible text to be worth
+    sending to the model at all — almost always a client-side-rendered SPA
+    (Oracle Cloud HCM's Candidate Experience UI and some Workday sites are
+    common offenders) where the actual posting loads via JavaScript after
+    the initial page load, which a plain HTTP GET never sees. Caught live:
+    without this check, a near-empty page silently produced a model
+    response of "<UNKNOWN>" — a placeholder string in real form fields
+    instead of an honest failure the candidate would actually notice."""
+
+    pass
+
+
+# Below this, there's essentially never a real job posting in what came
+# back — just a script-loaded shell, a login wall, or an error page.
+MIN_USABLE_TEXT_CHARS = 200
+
+
 class _TextExtractor(HTMLParser):
     """Strips tags and drops script/style content — good enough for a model
     to read the actual posting, not a real renderer. Deliberately stdlib
@@ -109,7 +127,9 @@ EXTRACT_SCHEMA: dict[str, Any] = {
 def parse_posting_url(client: AnthropicClient, url: str) -> tuple[dict[str, Any], float]:
     """Fetches url, strips it to text, and asks Haiku to pull out the
     manual-add form fields. Raises RobotsDisallowedError if the site's
-    robots.txt says no; httpx.HTTPError if the fetch itself fails."""
+    robots.txt says no; httpx.HTTPError if the fetch itself fails;
+    ThinPageContentError if there's nothing real to extract from (see
+    that class's docstring — mainly JS-rendered ATS platforms)."""
     _check_robots_allowed(url)
     resp = httpx.get(url, headers={"User-Agent": USER_AGENT}, timeout=20.0, follow_redirects=True)
     resp.raise_for_status()
@@ -117,6 +137,12 @@ def parse_posting_url(client: AnthropicClient, url: str) -> tuple[dict[str, Any]
     # nav/footer/script chrome can otherwise pad the extracted text well
     # past what's useful — plenty of room left for a real posting either way.
     text = _html_to_text(resp.text)[:15000]
+    if len(text) < MIN_USABLE_TEXT_CHARS:
+        raise ThinPageContentError(
+            "This page has almost no visible text to read — it likely loads the actual posting "
+            "via JavaScript after the page loads, which a simple fetch can't see. Paste the "
+            "details in by hand instead."
+        )
 
     result, cost_usd = client.structured_call(
         model=MODEL,

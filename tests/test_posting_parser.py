@@ -6,6 +6,7 @@ import respx
 
 from sightline.posting_parser import (
     RobotsDisallowedError,
+    ThinPageContentError,
     USER_AGENT,
     _check_robots_allowed,
     _html_to_text,
@@ -13,6 +14,13 @@ from sightline.posting_parser import (
 )
 
 URL = "https://example.com/careers/jobs/123"
+
+# A real server-rendered posting page has far more than 200 chars of text —
+# short mock HTML would (correctly) trip the thin-content guard meant for
+# JS-rendered SPA shells, so happy-path tests use this instead of a bare tag.
+REALISTIC_PAGE_HTML = (
+    "<html><body><h1>AI Enablement Lead</h1><p>" + ("Own AI adoption across the organization. " * 10) + "</p></body></html>"
+)
 
 
 def test_html_to_text_strips_tags_and_script_content():
@@ -58,7 +66,7 @@ def test_check_robots_allowed_fails_open_on_network_error():
 def test_parse_posting_url_happy_path():
     respx.get("https://example.com/robots.txt").mock(return_value=httpx.Response(404))
     respx.get(URL).mock(
-        return_value=httpx.Response(200, text="<html><body><h1>AI Enablement Lead</h1></body></html>")
+        return_value=httpx.Response(200, text=REALISTIC_PAGE_HTML)
     )
     fake_anthropic = MagicMock()
     fake_anthropic.structured_call.return_value = (
@@ -89,7 +97,7 @@ def test_parse_posting_url_happy_path():
 @respx.mock
 def test_parse_posting_url_maps_unclear_remote_to_none():
     respx.get("https://example.com/robots.txt").mock(return_value=httpx.Response(404))
-    respx.get(URL).mock(return_value=httpx.Response(200, text="<html><body>a job</body></html>"))
+    respx.get(URL).mock(return_value=httpx.Response(200, text=REALISTIC_PAGE_HTML))
     fake_anthropic = MagicMock()
     fake_anthropic.structured_call.return_value = (
         {"title": "X", "company": "Y", "location": "", "remote": "unclear", "jd_text": "..."}, 0.001,
@@ -113,3 +121,21 @@ def test_parse_posting_url_raises_on_fetch_failure():
     respx.get(URL).mock(return_value=httpx.Response(404))
     with pytest.raises(httpx.HTTPStatusError):
         parse_posting_url(MagicMock(), URL)
+
+
+@respx.mock
+def test_parse_posting_url_raises_on_thin_js_rendered_page():
+    # Found live against a real Oracle Cloud HCM Candidate Experience URL:
+    # the page is a client-side-rendered shell with the actual posting
+    # loaded via JS after page load, which a plain GET never sees. Without
+    # this guard, Haiku got ~6 characters of real text and returned
+    # "<UNKNOWN>" as a literal string in every field instead of failing —
+    # silently wrong data in the form is worse than an honest failure.
+    respx.get("https://example.com/robots.txt").mock(return_value=httpx.Response(404))
+    respx.get(URL).mock(
+        return_value=httpx.Response(200, text="<html><head><title>Acme</title></head><body></body></html>")
+    )
+    fake_anthropic = MagicMock()
+    with pytest.raises(ThinPageContentError):
+        parse_posting_url(fake_anthropic, URL)
+    fake_anthropic.structured_call.assert_not_called()  # never spend the model call on nothing

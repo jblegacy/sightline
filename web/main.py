@@ -46,7 +46,7 @@ from sightline.db import SightlineDB
 from sightline.ingest import handle_manual_add, handle_webhook_event
 from sightline.metrics import compute_metrics
 from sightline.outreach import assemble_outreach
-from sightline.posting_parser import RobotsDisallowedError, parse_posting_url
+from sightline.posting_parser import RobotsDisallowedError, ThinPageContentError, parse_posting_url
 from sightline.provenance import ProvenanceError
 from sightline.settings_service import preview_query, update_search_profile, update_settings
 from sightline.theirstack import TheirStackClient, build_filters_for_profile, verify_webhook_signature
@@ -176,7 +176,7 @@ def api_parse_posting_url(body: dict[str, Any], anthropic: AnthropicClient = Dep
         raise HTTPException(status_code=400, detail="url is required")
     try:
         fields, cost_usd = parse_posting_url(anthropic, url)
-    except RobotsDisallowedError as e:
+    except (RobotsDisallowedError, ThinPageContentError) as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
     except httpx.HTTPError as e:
         raise HTTPException(status_code=502, detail=f"couldn't fetch that URL: {e}") from e

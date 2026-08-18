@@ -432,7 +432,11 @@ def test_api_parse_posting_url_requires_url(client):
 def test_api_parse_posting_url_happy_path(client):
     respx.get("https://example.com/robots.txt").mock(return_value=httpx.Response(404))
     respx.get(PARSE_URL).mock(
-        return_value=httpx.Response(200, text="<html><body><h1>AI Enablement Lead</h1></body></html>")
+        return_value=httpx.Response(
+            200,
+            text="<html><body><h1>AI Enablement Lead</h1><p>"
+                 + ("Own AI adoption across the organization. " * 10) + "</p></body></html>",
+        )
     )
     resp = client.post("/api/postings/parse-url", json={"url": PARSE_URL}, auth=(DASH_USER, DASH_PASS))
     assert resp.status_code == 200
@@ -448,6 +452,14 @@ def test_api_parse_posting_url_maps_robots_disallowed_to_422(client):
     respx.get("https://example.com/robots.txt").mock(
         return_value=httpx.Response(200, text="User-agent: *\nDisallow: /")
     )
+    resp = client.post("/api/postings/parse-url", json={"url": PARSE_URL}, auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 422
+
+
+@respx.mock
+def test_api_parse_posting_url_maps_thin_content_to_422(client):
+    respx.get("https://example.com/robots.txt").mock(return_value=httpx.Response(404))
+    respx.get(PARSE_URL).mock(return_value=httpx.Response(200, text="<html><body></body></html>"))
     resp = client.post("/api/postings/parse-url", json={"url": PARSE_URL}, auth=(DASH_USER, DASH_PASS))
     assert resp.status_code == 422
 
