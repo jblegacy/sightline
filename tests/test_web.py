@@ -2,7 +2,9 @@ import hashlib
 import hmac
 import json
 
+import httpx
 import pytest
+import respx
 from fastapi.testclient import TestClient
 
 from sightline.auth import SESSION_COOKIE
@@ -409,6 +411,53 @@ def _seed_scored_posting(client) -> int:
     client.post("/webhooks/theirstack", content=body, headers={"X-TheirStack-Signature-256": sign(body)})
     posting = client.get("/api/postings", auth=(DASH_USER, DASH_PASS)).json()[0]
     return posting["id"]
+
+
+# ---- parse posting url ----
+
+PARSE_URL = "https://example.com/careers/jobs/123"
+
+
+def test_api_parse_posting_url_requires_auth(raw_client):
+    resp = raw_client.post("/api/postings/parse-url", json={"url": PARSE_URL})
+    assert resp.status_code == 401
+
+
+def test_api_parse_posting_url_requires_url(client):
+    resp = client.post("/api/postings/parse-url", json={}, auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 400
+
+
+@respx.mock
+def test_api_parse_posting_url_happy_path(client):
+    respx.get("https://example.com/robots.txt").mock(return_value=httpx.Response(404))
+    respx.get(PARSE_URL).mock(
+        return_value=httpx.Response(200, text="<html><body><h1>AI Enablement Lead</h1></body></html>")
+    )
+    resp = client.post("/api/postings/parse-url", json={"url": PARSE_URL}, auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["title"] == "AI Enablement Lead"
+    assert body["company"] == "Acme Inc"
+    assert body["remote"] is True
+    assert body["jd_text"] == "Own AI adoption across the org."
+
+
+@respx.mock
+def test_api_parse_posting_url_maps_robots_disallowed_to_422(client):
+    respx.get("https://example.com/robots.txt").mock(
+        return_value=httpx.Response(200, text="User-agent: *\nDisallow: /")
+    )
+    resp = client.post("/api/postings/parse-url", json={"url": PARSE_URL}, auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 422
+
+
+@respx.mock
+def test_api_parse_posting_url_maps_fetch_failure_to_502(client):
+    respx.get("https://example.com/robots.txt").mock(return_value=httpx.Response(404))
+    respx.get(PARSE_URL).mock(return_value=httpx.Response(404))
+    resp = client.post("/api/postings/parse-url", json={"url": PARSE_URL}, auth=(DASH_USER, DASH_PASS))
+    assert resp.status_code == 502
 
 
 # ---- manual add ----

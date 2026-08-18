@@ -331,6 +331,11 @@ class FakeAnthropic:
                 "email": "Hi there,\n\nSaw the posting mentions scaling fast. I build this kind of "
                          "system.\n\nWorth a 15-minute conversation?\n\nJames",
             }, 0.006
+        if kwargs.get("tool_name") == "submit_posting_fields":
+            return {
+                "title": "AI Enablement Lead", "company": "Acme Inc", "location": "Remote, US",
+                "remote": "true", "jd_text": "Own AI adoption across the org.",
+            }, 0.0012
         result = {
             "dimensions": self.dimensions,
             "total": sum(self.dimensions.values()),

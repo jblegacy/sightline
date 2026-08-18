@@ -11,6 +11,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+import httpx
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from starlette.concurrency import run_in_threadpool
@@ -45,6 +46,7 @@ from sightline.db import SightlineDB
 from sightline.ingest import handle_manual_add, handle_webhook_event
 from sightline.metrics import compute_metrics
 from sightline.outreach import assemble_outreach
+from sightline.posting_parser import RobotsDisallowedError, parse_posting_url
 from sightline.provenance import ProvenanceError
 from sightline.settings_service import preview_query, update_search_profile, update_settings
 from sightline.theirstack import TheirStackClient, build_filters_for_profile, verify_webhook_signature
@@ -160,6 +162,25 @@ def api_postings(db: SightlineDB = Depends(get_db)) -> list[dict]:
     settings = db.get_settings()
     rows = db.list_scored_postings()
     return postings_to_dashboard_p(rows, score_threshold=settings.get("score_threshold", 70))
+
+
+@app.post("/api/postings/parse-url", dependencies=[Depends(require_auth)])
+def api_parse_posting_url(body: dict[str, Any], anthropic: AnthropicClient = Depends(get_anthropic)) -> dict:
+    """Fetches a job posting URL and extracts title/company/location/remote/
+    jd_text with one Haiku call, so the manual-add form can be filled in
+    from a pasted link instead of by hand. See sightline/posting_parser.py —
+    respects robots.txt, sends an identifying User-Agent, and is a single
+    on-demand fetch of a URL the candidate already chose, not a scraper."""
+    url = (body.get("url") or "").strip()
+    if not url:
+        raise HTTPException(status_code=400, detail="url is required")
+    try:
+        fields, cost_usd = parse_posting_url(anthropic, url)
+    except RobotsDisallowedError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"couldn't fetch that URL: {e}") from e
+    return {**fields, "cost_usd": round(cost_usd, 5)}
 
 
 @app.post("/api/postings/manual", dependencies=[Depends(require_auth)])

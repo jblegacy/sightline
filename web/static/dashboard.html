@@ -524,12 +524,16 @@ table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       </div>
       <pre id="addErrText" style="white-space:pre-wrap;word-break:break-word;margin:0;font-size:12.5px;user-select:text"></pre>
     </div>
+    <label class="flabel">Posting URL *</label>
+    <div style="display:flex;gap:8px;align-items:flex-start">
+      <input type="text" id="addUrl" class="finput" placeholder="https://..." style="flex:1">
+      <button class="btn sm ghost" id="addFetchUrl" type="button" style="white-space:nowrap">Fetch details</button>
+    </div>
+    <p class="hint" style="margin:5px 0 0" id="addFetchHint">Paste a link and fetch title, company, and the description automatically — review everything below before adding, it isn't always perfect.</p>
     <label class="flabel">Job title *</label>
     <input type="text" id="addTitle" class="finput" placeholder="Business Operations Generalist">
     <label class="flabel">Company</label>
     <input type="text" id="addCompany" class="finput" placeholder="Unknown if not given">
-    <label class="flabel">Posting URL *</label>
-    <input type="text" id="addUrl" class="finput" placeholder="https://...">
     <label class="flabel">Location</label>
     <input type="text" id="addLocation" class="finput" placeholder="e.g. United States, Remote">
     <label class="flabel">Remote?</label>
@@ -539,7 +543,7 @@ table.samp td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       <option value="false">Not remote</option>
     </select>
     <label class="flabel">Job description *</label>
-    <textarea id="addJdText" class="finput" rows="8" placeholder="Paste the full JD text here"></textarea>
+    <textarea id="addJdText" class="finput" rows="8" placeholder="Paste the full JD text here, or fetch it from the URL above"></textarea>
     <div style="margin-top:14px;display:flex;gap:8px">
       <button class="btn sm go" id="addSubmit">Add and apply</button>
       <button class="btn sm ghost" id="addCancel">Cancel</button>
@@ -1092,6 +1096,37 @@ document.addEventListener('click',e=>{
   if(e.target.id==='addErrCopy'){
     const txt=$('#addErrText').textContent;
     navigator.clipboard?.writeText(txt).then(()=>toast('Copied')).catch(()=>toast('Copy failed — select manually'));
+    return}
+  if(e.target.id==='addFetchUrl'){
+    const url=$('#addUrl').value.trim();
+    if(!url){toast('Paste a URL first');return}
+    const btn=e.target, label=btn.textContent;
+    btn.disabled=true; btn.textContent='Fetching…';
+    $('#addErrBox').style.display='none';
+    (async()=>{
+      try{
+        const resp=await fetch('/api/postings/parse-url',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});
+        if(!resp.ok){const err=await resp.json().catch(()=>({detail:`HTTP ${resp.status}`}));
+          $('#addErrText').textContent=err.detail||`HTTP ${resp.status}`;
+          $('#addErrBox').style.display='block';
+          toast('Fetch failed — see error above');
+          btn.disabled=false;btn.textContent=label;return}
+        const f=await resp.json();
+        if(f.title)$('#addTitle').value=f.title;
+        if(f.company)$('#addCompany').value=f.company;
+        if(f.location)$('#addLocation').value=f.location;
+        if(f.remote===true)$('#addRemote').value='true';
+        else if(f.remote===false)$('#addRemote').value='false';
+        if(f.jd_text)$('#addJdText').value=f.jd_text;
+        toast('Fetched — review before adding, it isn’t always perfect');
+        btn.disabled=false;btn.textContent=label;
+      }catch(err){
+        $('#addErrText').textContent=String(err&&err.message||err);
+        $('#addErrBox').style.display='block';
+        toast('Fetch failed — see error above');
+        console.error('parse-url failed:',err);
+        btn.disabled=false;btn.textContent=label;}
+    })();
     return}
   if(e.target.id==='addClose'||e.target.id==='addCancel'||e.target.id==='addMask'){$('#addMask').classList.remove('on');return}
   if(e.target.id==='addSubmit'){
